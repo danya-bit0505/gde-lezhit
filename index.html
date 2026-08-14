@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Где лежит</title>
+
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#14140f">
+
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="favicon-16.png">
+<link rel="shortcut icon" href="favicon.ico">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Где лежит">
+<style>
+  :root{
+    --bg: #14140f;
+    --bg-elev: #1c1c15;
+    --line: #38382c;
+    --text: #e8e6d8;
+    --muted: #86846f;
+    --accent: #e8b923;
+    --accent-dim: #6b5714;
+    --danger: #c4553d;
+    --ok: #7fae5e;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{height:100%;}
+  body{
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'SF Mono', 'Consolas', 'Menlo', monospace;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap{
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 20px 16px 90px;
+    min-height:100%;
+  }
+  header{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    margin-bottom: 18px;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 12px;
+    gap: 10px;
+  }
+  h1{
+    font-size: 15px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .status{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    font-size: 11px;
+    color: var(--muted);
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 3px;
+    border: 1px solid transparent;
+  }
+  .status:hover{ border-color: var(--line); }
+  .dot{ width:7px; height:7px; border-radius:50%; background: var(--muted); flex-shrink:0; }
+  .dot.ok{ background: var(--ok); }
+  .dot.err{ background: var(--danger); }
+  .dot.busy{ background: var(--accent); animation: pulse 1s infinite; }
+  @keyframes pulse{ 0%,100%{opacity:1} 50%{opacity:.3} }
+
+  .search-box{ position: relative; margin-bottom: 14px; }
+  .search-box input{
+    width:100%;
+    background: var(--bg-elev);
+    border: 1px solid var(--line);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 16px;
+    padding: 13px 14px;
+    border-radius: 3px;
+    outline: none;
+  }
+  .search-box input:focus{ border-color: var(--accent-dim); }
+
+  .add-form{ display:flex; gap: 8px; margin-bottom: 22px; flex-wrap: wrap; }
+  .add-form input{
+    background: var(--bg-elev);
+    border: 1px solid var(--line);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 14px;
+    padding: 10px 12px;
+    border-radius: 3px;
+    outline: none;
+    flex: 1 1 120px;
+  }
+  .add-form input:focus{ border-color: var(--accent-dim); }
+  .add-form button{
+    background: var(--accent);
+    color: #14140f;
+    border: none;
+    font-family: inherit;
+    font-weight: 700;
+    font-size: 13px;
+    padding: 10px 16px;
+    border-radius: 3px;
+    cursor: pointer;
+  }
+  .add-form button:active{ transform: translateY(1px); }
+
+  .list{ display:flex; flex-direction:column; }
+  .item{
+    display:flex;
+    align-items:center;
+    gap: 12px;
+    background: var(--bg-elev);
+    border: 1px solid var(--line);
+    padding: 12px 14px;
+    border-radius: 3px;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+  }
+  .item .name{ font-size: 14.5px; font-weight: 600; flex: 1 1 auto; }
+  .item .arrow{ color: var(--muted); font-size: 13px; }
+  .item .place{ font-size: 14px; color: var(--accent); flex: 1 1 auto; }
+  .item .meta{ font-size: 10.5px; color: var(--muted); white-space: nowrap; }
+  .item .del{
+    background: none; border: none; color: var(--muted);
+    font-size: 16px; cursor: pointer; padding: 2px 6px; border-radius: 3px;
+  }
+  .item .del:hover{ color: var(--danger); }
+  mark{ background: var(--accent-dim); color: var(--accent); padding: 0 1px; border-radius: 2px; }
+
+  .empty{
+    text-align:center; color: var(--muted); font-size: 13px;
+    padding: 50px 20px; border: 1px dashed var(--line); border-radius: 4px;
+  }
+  .empty b{ color: var(--text); }
+
+  .toast{
+    position: fixed; bottom: 20px; left: 50%;
+    transform: translateX(-50%) translateY(10px);
+    background: var(--accent); color: #14140f; font-size: 13px; font-weight: 600;
+    padding: 9px 16px; border-radius: 4px; opacity: 0; pointer-events: none;
+    transition: opacity .15s, transform .15s; max-width: 90%; text-align:center;
+  }
+  .toast.show{ opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* settings modal */
+  .overlay{
+    position: fixed; inset:0; background: rgba(0,0,0,.6);
+    display:none; align-items:center; justify-content:center; z-index: 50; padding: 16px;
+  }
+  .overlay.show{ display:flex; }
+  .modal{
+    background: var(--bg-elev); border: 1px solid var(--line); border-radius: 6px;
+    padding: 20px; max-width: 420px; width:100%;
+  }
+  .modal h2{ font-size: 13px; text-transform: uppercase; letter-spacing: .1em; color: var(--accent); margin-bottom: 14px; }
+  .modal p{ font-size: 12px; color: var(--muted); margin-bottom: 10px; line-height: 1.5; }
+  .modal label{ font-size: 11px; color: var(--muted); display:block; margin-bottom: 4px; margin-top: 12px; }
+  .modal input{
+    width:100%; background: var(--bg); border: 1px solid var(--line); color: var(--text);
+    font-family: inherit; font-size: 13px; padding: 9px 10px; border-radius: 3px; outline: none;
+  }
+  .modal input:focus{ border-color: var(--accent-dim); }
+  .modal .row{ display:flex; gap: 8px; margin-top: 18px; }
+  .modal button{
+    flex:1; font-family: inherit; font-size: 12px; font-weight: 700; padding: 10px;
+    border-radius: 3px; cursor: pointer; border: none;
+  }
+  .modal .primary{ background: var(--accent); color: #14140f; }
+  .modal .ghost{ background: transparent; color: var(--muted); border: 1px solid var(--line); }
+  .modal a{ color: var(--accent); }
+  .gist-id-box{
+    display:flex; gap:6px; align-items:center; margin-top: 8px;
+    font-size: 11px; color: var(--muted); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 3px; padding: 7px 9px; word-break: break-all;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Где лежит</h1>
+    <div class="status" id="statusBtn" title="Настройки синхронизации">
+      <span class="dot" id="statusDot"></span>
+      <span id="statusText">не подключено</span>
+    </div>
+  </header>
+
+  <div class="search-box">
+    <input id="search" type="text" placeholder="Найти вещь…" autocomplete="off">
+  </div>
+
+  <div class="add-form">
+    <input id="itemName" type="text" placeholder="Вещь" autocomplete="off">
+    <input id="itemPlace" type="text" placeholder="Где лежит" autocomplete="off">
+    <button id="addBtn">Добавить</button>
+  </div>
+
+  <div class="list" id="list"></div>
+  <div class="empty" id="empty" style="display:none">Пока пусто.</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <h2>Синхронизация</h2>
+    <p>Данные хранятся в приватном GitHub Gist. Один раз настрой на каждом устройстве — токен и id gist'а нужны одинаковые, чтобы устройства видели одни и те же вещи.</p>
+
+    <label>Personal Access Token (scope: gist)</label>
+    <input id="tokenInput" type="password" placeholder="ghp_xxxxxxxxxxxx" autocomplete="off">
+    <p style="margin-top:6px">Создать: <a href="https://github.com/settings/tokens/new?scopes=gist&description=gde-lezhit" target="_blank">github.com/settings/tokens</a> → scope <b>gist</b>.</p>
+
+    <label>Gist ID (оставь пустым при первой настройке — создастся новый)</label>
+    <input id="gistIdInput" type="text" placeholder="автоматически" autocomplete="off">
+
+    <div id="gistIdDisplay" style="display:none" class="gist-id-box">
+      <span>ID для второго устройства:</span>
+      <b id="gistIdValue"></b>
+    </div>
+
+    <div class="row">
+      <button class="ghost" id="cancelBtn">Отмена</button>
+      <button class="primary" id="connectBtn">Подключить</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const GIST_FILENAME = 'items.json';
+let items = [];
+let token = localStorage.getItem('gh_token') || '';
+let gistId = localStorage.getItem('gist_id') || '';
+let syncTimer = null;
+
+const listEl = document.getElementById('list');
+const emptyEl = document.getElementById('empty');
+const searchEl = document.getElementById('search');
+const nameEl = document.getElementById('itemName');
+const placeEl = document.getElementById('itemPlace');
+const addBtn = document.getElementById('addBtn');
+const toastEl = document.getElementById('toast');
+const statusDot = document.getElementById('statusDot');
+const statusText = document.getElementById('statusText');
+const statusBtn = document.getElementById('statusBtn');
+const overlay = document.getElementById('overlay');
+const tokenInput = document.getElementById('tokenInput');
+const gistIdInput = document.getElementById('gistIdInput');
+const gistIdDisplay = document.getElementById('gistIdDisplay');
+const gistIdValue = document.getElementById('gistIdValue');
+const connectBtn = document.getElementById('connectBtn');
+const cancelBtn = document.getElementById('cancelBtn');
+
+function showToast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(()=> toastEl.classList.remove('show'), 1600);
+}
+
+function setStatus(state, text){
+  statusDot.className = 'dot' + (state ? ' ' + state : '');
+  statusText.textContent = text;
+}
+
+function escapeHtml(s){
+  return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function highlight(text, query){
+  const safe = escapeHtml(text);
+  if(!query) return safe;
+  const idx = safe.toLowerCase().indexOf(query.toLowerCase());
+  if(idx === -1) return safe;
+  return safe.slice(0, idx) + '<mark>' + safe.slice(idx, idx + query.length) + '</mark>' + safe.slice(idx + query.length);
+}
+function timeAgo(ts){
+  const diff = Date.now() - ts;
+  const min = Math.floor(diff / 60000);
+  if(min < 1) return 'только что';
+  if(min < 60) return min + ' мин назад';
+  const hr = Math.floor(min / 60);
+  if(hr < 24) return hr + ' ч назад';
+  const day = Math.floor(hr / 24);
+  if(day < 30) return day + ' дн назад';
+  return new Date(ts).toLocaleDateString('ru-RU');
+}
+
+function render(){
+  const q = searchEl.value.trim().toLowerCase();
+  const filtered = q
+    ? items.filter(it => it.name.toLowerCase().includes(q) || it.place.toLowerCase().includes(q))
+    : items;
+  const sorted = [...filtered].sort((a,b) => b.updatedAt - a.updatedAt);
+
+  if(sorted.length === 0){
+    listEl.innerHTML = '';
+    emptyEl.style.display = 'block';
+    emptyEl.innerHTML = q ? 'Ничего не найдено по «' + escapeHtml(searchEl.value) + '»' : 'Пока пусто.';
+    return;
+  }
+  emptyEl.style.display = 'none';
+  listEl.innerHTML = sorted.map(it => `
+    <div class="item" data-id="${it.id}">
+      <span class="name">${highlight(it.name, q)}</span>
+      <span class="arrow">→</span>
+      <span class="place">${highlight(it.place, q)}</span>
+      <span class="meta">${timeAgo(it.updatedAt)}</span>
+      <button class="del" data-id="${it.id}" title="Удалить">✕</button>
+    </div>
+  `).join('');
+}
+
+/* ---- local cache (instant load) ---- */
+function loadCache(){
+  try{
+    const raw = localStorage.getItem('items_cache');
+    items = raw ? JSON.parse(raw) : [];
+  }catch(e){ items = []; }
+  render();
+}
+function saveCache(){
+  localStorage.setItem('items_cache', JSON.stringify(items));
+}
+
+/* ---- gist sync ---- */
+async function pullFromGist(){
+  if(!token || !gistId){ setStatus('', 'не подключено'); return; }
+  setStatus('busy', 'синхронизация…');
+  try{
+    const res = await fetch(`https://api.github.com/gists/${gistId}`, {
+      headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github+json' }
+    });
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    const file = data.files && data.files[GIST_FILENAME];
+    if(file && file.content){
+      items = JSON.parse(file.content);
+      saveCache();
+      render();
+    }
+    setStatus('ok', 'синхронизировано');
+  }catch(e){
+    console.error(e);
+    setStatus('err', 'ошибка связи');
+  }
+}
+
+function scheduleSync(){
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(pushToGist, 600);
+}
+
+async function pushToGist(){
+  if(!token || !gistId) return;
+  setStatus('busy', 'сохранение…');
+  try{
+    const res = await fetch(`https://api.github.com/gists/${gistId}`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/vnd.github+json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ files: { [GIST_FILENAME]: { content: JSON.stringify(items, null, 2) } } })
+    });
+    if(!res.ok) throw new Error('HTTP ' + res.status);
+    setStatus('ok', 'синхронизировано');
+  }catch(e){
+    console.error(e);
+    setStatus('err', 'не сохранилось, повтор при след. изменении');
+  }
+}
+
+async function createGist(){
+  const res = await fetch('https://api.github.com/gists', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${tokenInput.value.trim()}`,
+      'Accept': 'application/vnd.github+json',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      description: 'gde-lezhit data',
+      public: false,
+      files: { [GIST_FILENAME]: { content: JSON.stringify(items.length ? items : [], null, 2) } }
+    })
+  });
+  if(!res.ok) throw new Error('HTTP ' + res.status);
+  const data = await res.json();
+  return data.id;
+}
+
+/* ---- item ops ---- */
+function addItem(){
+  const name = nameEl.value.trim();
+  const place = placeEl.value.trim();
+  if(!name || !place){ (!name ? nameEl : placeEl).focus(); return; }
+  const existing = items.find(it => it.name.toLowerCase() === name.toLowerCase());
+  if(existing){
+    existing.place = place;
+    existing.updatedAt = Date.now();
+    showToast('Обновлено: ' + name);
+  }else{
+    items.push({ id: crypto.randomUUID(), name, place, updatedAt: Date.now() });
+    showToast('Добавлено');
+  }
+  nameEl.value = ''; placeEl.value = ''; nameEl.focus();
+  saveCache(); render(); scheduleSync();
+}
+function deleteItem(id){
+  items = items.filter(it => it.id !== id);
+  saveCache(); render(); scheduleSync();
+}
+
+/* ---- events ---- */
+addBtn.addEventListener('click', addItem);
+[nameEl, placeEl].forEach(el => el.addEventListener('keydown', e => { if(e.key === 'Enter') addItem(); }));
+searchEl.addEventListener('input', render);
+searchEl.addEventListener('keydown', e => { if(e.key === 'Escape'){ searchEl.value=''; render(); searchEl.blur(); } });
+listEl.addEventListener('click', e => { const btn = e.target.closest('.del'); if(btn) deleteItem(btn.dataset.id); });
+document.addEventListener('keydown', e => {
+  if(e.key === '/' && ![searchEl,nameEl,placeEl].includes(document.activeElement)){ e.preventDefault(); searchEl.focus(); }
+});
+
+statusBtn.addEventListener('click', () => {
+  tokenInput.value = token;
+  gistIdInput.value = gistId;
+  if(gistId){ gistIdDisplay.style.display = 'flex'; gistIdValue.textContent = gistId; } else { gistIdDisplay.style.display = 'none'; }
+  overlay.classList.add('show');
+});
+cancelBtn.addEventListener('click', () => overlay.classList.remove('show'));
+
+connectBtn.addEventListener('click', async () => {
+  const t = tokenInput.value.trim();
+  let g = gistIdInput.value.trim();
+  if(!t){ showToast('Нужен токен'); return; }
+  connectBtn.disabled = true;
+  connectBtn.textContent = '...';
+  try{
+    if(!g){
+      g = await createGist();
+      showToast('Gist создан');
+    }
+    token = t; gistId = g;
+    localStorage.setItem('gh_token', token);
+    localStorage.setItem('gist_id', gistId);
+    gistIdDisplay.style.display = 'flex';
+    gistIdValue.textContent = gistId;
+    await pullFromGist();
+    overlay.classList.remove('show');
+  }catch(e){
+    console.error(e);
+    showToast('Не получилось подключиться — проверь токен');
+  }
+  connectBtn.disabled = false;
+  connectBtn.textContent = 'Подключить';
+});
+
+/* ---- init ---- */
+loadCache();
+pullFromGist();
+</script>
+</body>
+</html>
