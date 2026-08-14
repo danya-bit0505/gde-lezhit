@@ -28,6 +28,7 @@
     --ok: #7fae5e;
   }
   *{box-sizing:border-box; margin:0; padding:0;}
+  html{ font-size: 16px; }
   html,body{height:100%;}
   body{
     background: var(--bg);
@@ -51,17 +52,40 @@
     gap: 10px;
   }
   h1{
-    font-size: 15px;
+    font-size: 0.9375rem;
     letter-spacing: 0.14em;
     text-transform: uppercase;
     color: var(--accent);
     font-weight: 600;
   }
+  .header-right{ display:flex; align-items:center; gap: 10px; }
+  .font-ctrl{
+    display:flex;
+    align-items:center;
+    gap: 2px;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .font-ctrl button{
+    background: var(--bg-elev);
+    color: var(--text);
+    border: none;
+    font-family: inherit;
+    font-weight: 700;
+    font-size: 0.8125rem;
+    padding: 6px 10px;
+    cursor: pointer;
+    line-height: 1;
+  }
+  .font-ctrl button:hover{ background: var(--line); }
+  .font-ctrl button:active{ transform: translateY(1px); }
+  .font-ctrl .sep{ width:1px; align-self: stretch; background: var(--line); }
   .status{
     display:flex;
     align-items:center;
     gap:6px;
-    font-size: 11px;
+    font-size: 0.6875rem;
     color: var(--muted);
     cursor: pointer;
     padding: 4px 8px;
@@ -82,8 +106,8 @@
     border: 1px solid var(--line);
     color: var(--text);
     font-family: inherit;
-    font-size: 16px;
-    padding: 13px 14px;
+    font-size: 1rem;
+    padding: 0.8125em 0.875em;
     border-radius: 3px;
     outline: none;
   }
@@ -95,8 +119,8 @@
     border: 1px solid var(--line);
     color: var(--text);
     font-family: inherit;
-    font-size: 14px;
-    padding: 10px 12px;
+    font-size: 0.875rem;
+    padding: 0.714em 0.857em;
     border-radius: 3px;
     outline: none;
     flex: 1 1 120px;
@@ -108,8 +132,8 @@
     border: none;
     font-family: inherit;
     font-weight: 700;
-    font-size: 13px;
-    padding: 10px 16px;
+    font-size: 0.8125rem;
+    padding: 0.77em 1.23em;
     border-radius: 3px;
     cursor: pointer;
   }
@@ -122,24 +146,25 @@
     gap: 12px;
     background: var(--bg-elev);
     border: 1px solid var(--line);
-    padding: 12px 14px;
+    padding: 0.75rem 0.875rem;
     border-radius: 3px;
     margin-bottom: 6px;
     flex-wrap: wrap;
   }
-  .item .name{ font-size: 14.5px; font-weight: 600; flex: 1 1 auto; }
-  .item .arrow{ color: var(--muted); font-size: 13px; }
-  .item .place{ font-size: 14px; color: var(--accent); flex: 1 1 auto; }
-  .item .meta{ font-size: 10.5px; color: var(--muted); white-space: nowrap; }
+  .item .name{ font-size: 0.906rem; font-weight: 600; flex: 1 1 auto; }
+  .item .arrow{ color: var(--muted); font-size: 0.8125rem; }
+  .item .place{ font-size: 0.875rem; color: var(--accent); flex: 1 1 auto; }
+  .item .meta{ font-size: 0.656rem; color: var(--muted); white-space: nowrap; }
   .item .del{
-    background: none; border: none; color: var(--muted);
-    font-size: 16px; cursor: pointer; padding: 2px 6px; border-radius: 3px;
+    background: none; border: 1px solid transparent; color: var(--danger);
+    font-size: 1.1rem; cursor: pointer; padding: 0.1em 0.4em; border-radius: 3px;
+    font-weight: 700; line-height: 1;
   }
-  .item .del:hover{ color: var(--danger); }
+  .item .del:hover{ background: rgba(196,85,61,0.12); border-color: var(--danger); }
   mark{ background: var(--accent-dim); color: var(--accent); padding: 0 1px; border-radius: 2px; }
 
   .empty{
-    text-align:center; color: var(--muted); font-size: 13px;
+    text-align:center; color: var(--muted); font-size: 0.8125rem;
     padding: 50px 20px; border: 1px dashed var(--line); border-radius: 4px;
   }
   .empty b{ color: var(--text); }
@@ -147,7 +172,7 @@
   .toast{
     position: fixed; bottom: 20px; left: 50%;
     transform: translateX(-50%) translateY(10px);
-    background: var(--accent); color: #14140f; font-size: 13px; font-weight: 600;
+    background: var(--accent); color: #14140f; font-size: 0.8125rem; font-weight: 600;
     padding: 9px 16px; border-radius: 4px; opacity: 0; pointer-events: none;
     transition: opacity .15s, transform .15s; max-width: 90%; text-align:center;
   }
@@ -163,17 +188,17 @@
     background: var(--bg-elev); border: 1px solid var(--line); border-radius: 6px;
     padding: 20px; max-width: 420px; width:100%;
   }
-  .modal h2{ font-size: 13px; text-transform: uppercase; letter-spacing: .1em; color: var(--accent); margin-bottom: 14px; }
-  .modal p{ font-size: 12px; color: var(--muted); margin-bottom: 10px; line-height: 1.5; }
-  .modal label{ font-size: 11px; color: var(--muted); display:block; margin-bottom: 4px; margin-top: 12px; }
+  .modal h2{ font-size: 0.8125rem; text-transform: uppercase; letter-spacing: .1em; color: var(--accent); margin-bottom: 14px; }
+  .modal p{ font-size: 0.75rem; color: var(--muted); margin-bottom: 10px; line-height: 1.5; }
+  .modal label{ font-size: 0.6875rem; color: var(--muted); display:block; margin-bottom: 4px; margin-top: 12px; }
   .modal input{
     width:100%; background: var(--bg); border: 1px solid var(--line); color: var(--text);
-    font-family: inherit; font-size: 13px; padding: 9px 10px; border-radius: 3px; outline: none;
+    font-family: inherit; font-size: 0.8125rem; padding: 9px 10px; border-radius: 3px; outline: none;
   }
   .modal input:focus{ border-color: var(--accent-dim); }
   .modal .row{ display:flex; gap: 8px; margin-top: 18px; }
   .modal button{
-    flex:1; font-family: inherit; font-size: 12px; font-weight: 700; padding: 10px;
+    flex:1; font-family: inherit; font-size: 0.75rem; font-weight: 700; padding: 10px;
     border-radius: 3px; cursor: pointer; border: none;
   }
   .modal .primary{ background: var(--accent); color: #14140f; }
@@ -181,18 +206,38 @@
   .modal a{ color: var(--accent); }
   .gist-id-box{
     display:flex; gap:6px; align-items:center; margin-top: 8px;
-    font-size: 11px; color: var(--muted); background: var(--bg);
+    font-size: 0.6875rem; color: var(--muted); background: var(--bg);
     border: 1px solid var(--line); border-radius: 3px; padding: 7px 9px; word-break: break-all;
   }
+
+  /* delete confirmation modal */
+  .modal-danger{ border-color: var(--danger); }
+  .modal-danger h2{ color: var(--danger); }
+  .delete-preview{
+    display:flex; align-items:center; gap: 8px; flex-wrap: wrap;
+    background: var(--bg); border: 1px solid var(--line); border-radius: 3px;
+    padding: 0.75rem 0.875rem; margin-bottom: 4px;
+  }
+  .delete-preview .name{ font-size: 0.906rem; font-weight: 600; color: var(--text); }
+  .delete-preview .arrow{ color: var(--muted); font-size: 0.8125rem; }
+  .delete-preview .place{ font-size: 0.875rem; color: var(--accent); }
+  .modal .danger-btn{ background: var(--danger); color: #fff; }
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
     <h1>Где лежит</h1>
-    <div class="status" id="statusBtn" title="Настройки синхронизации">
-      <span class="dot" id="statusDot"></span>
-      <span id="statusText">не подключено</span>
+    <div class="header-right">
+      <div class="font-ctrl" title="Размер шрифта">
+        <button id="fontMinus" aria-label="Уменьшить шрифт">A−</button>
+        <span class="sep"></span>
+        <button id="fontPlus" aria-label="Увеличить шрифт">A+</button>
+      </div>
+      <div class="status" id="statusBtn" title="Настройки синхронизации">
+        <span class="dot" id="statusDot"></span>
+        <span id="statusText">не подключено</span>
+      </div>
     </div>
   </header>
 
@@ -236,6 +281,21 @@
   </div>
 </div>
 
+<div class="overlay" id="deleteOverlay">
+  <div class="modal modal-danger">
+    <h2>Удалить вещь?</h2>
+    <div class="delete-preview">
+      <span class="name" id="deleteItemName"></span>
+      <span class="arrow">→</span>
+      <span class="place" id="deleteItemPlace"></span>
+    </div>
+    <div class="row">
+      <button class="ghost" id="deleteCancelBtn">Отмена</button>
+      <button class="danger-btn" id="deleteConfirmBtn">Удалить</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const GIST_FILENAME = 'items.json';
 let items = [];
@@ -260,6 +320,14 @@ const gistIdDisplay = document.getElementById('gistIdDisplay');
 const gistIdValue = document.getElementById('gistIdValue');
 const connectBtn = document.getElementById('connectBtn');
 const cancelBtn = document.getElementById('cancelBtn');
+const deleteOverlay = document.getElementById('deleteOverlay');
+const deleteItemName = document.getElementById('deleteItemName');
+const deleteItemPlace = document.getElementById('deleteItemPlace');
+const deleteCancelBtn = document.getElementById('deleteCancelBtn');
+const deleteConfirmBtn = document.getElementById('deleteConfirmBtn');
+const fontMinus = document.getElementById('fontMinus');
+const fontPlus = document.getElementById('fontPlus');
+let pendingDeleteId = null;
 
 function showToast(msg){
   toastEl.textContent = msg;
@@ -417,9 +485,23 @@ function addItem(){
   nameEl.value = ''; placeEl.value = ''; nameEl.focus();
   saveCache(); render(); scheduleSync();
 }
-function deleteItem(id){
-  items = items.filter(it => it.id !== id);
-  saveCache(); render(); scheduleSync();
+function requestDelete(id){
+  const it = items.find(i => i.id === id);
+  if(!it) return;
+  pendingDeleteId = id;
+  deleteItemName.textContent = it.name;
+  deleteItemPlace.textContent = it.place;
+  deleteOverlay.classList.add('show');
+}
+
+function confirmDelete(){
+  if(pendingDeleteId){
+    items = items.filter(it => it.id !== pendingDeleteId);
+    saveCache(); render(); scheduleSync();
+    showToast('Удалено');
+  }
+  pendingDeleteId = null;
+  deleteOverlay.classList.remove('show');
 }
 
 /* ---- events ---- */
@@ -427,7 +509,10 @@ addBtn.addEventListener('click', addItem);
 [nameEl, placeEl].forEach(el => el.addEventListener('keydown', e => { if(e.key === 'Enter') addItem(); }));
 searchEl.addEventListener('input', render);
 searchEl.addEventListener('keydown', e => { if(e.key === 'Escape'){ searchEl.value=''; render(); searchEl.blur(); } });
-listEl.addEventListener('click', e => { const btn = e.target.closest('.del'); if(btn) deleteItem(btn.dataset.id); });
+listEl.addEventListener('click', e => { const btn = e.target.closest('.del'); if(btn) requestDelete(btn.dataset.id); });
+deleteCancelBtn.addEventListener('click', () => { pendingDeleteId = null; deleteOverlay.classList.remove('show'); });
+deleteConfirmBtn.addEventListener('click', confirmDelete);
+deleteOverlay.addEventListener('click', e => { if(e.target === deleteOverlay){ pendingDeleteId = null; deleteOverlay.classList.remove('show'); } });
 document.addEventListener('keydown', e => {
   if(e.key === '/' && ![searchEl,nameEl,placeEl].includes(document.activeElement)){ e.preventDefault(); searchEl.focus(); }
 });
@@ -465,6 +550,25 @@ connectBtn.addEventListener('click', async () => {
   connectBtn.disabled = false;
   connectBtn.textContent = 'Подключить';
 });
+
+/* ---- font size ---- */
+const FONT_MIN = 90, FONT_MAX = 170, FONT_STEP = 10;
+let fontScale = parseInt(localStorage.getItem('font_scale'), 10);
+if(isNaN(fontScale)) fontScale = 100;
+
+function applyFontScale(){
+  document.documentElement.style.fontSize = fontScale + '%';
+  fontMinus.disabled = fontScale <= FONT_MIN;
+  fontPlus.disabled = fontScale >= FONT_MAX;
+}
+function changeFontScale(delta){
+  fontScale = Math.min(FONT_MAX, Math.max(FONT_MIN, fontScale + delta));
+  localStorage.setItem('font_scale', fontScale);
+  applyFontScale();
+}
+fontMinus.addEventListener('click', () => changeFontScale(-FONT_STEP));
+fontPlus.addEventListener('click', () => changeFontScale(FONT_STEP));
+applyFontScale();
 
 /* ---- init ---- */
 loadCache();
