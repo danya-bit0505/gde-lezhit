@@ -570,6 +570,13 @@ fontMinus.addEventListener('click', () => changeFontScale(-FONT_STEP));
 fontPlus.addEventListener('click', () => changeFontScale(FONT_STEP));
 applyFontScale();
 
+/* ---- service worker ---- */
+if('serviceWorker' in navigator){
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(e => console.error('SW error', e));
+  });
+}
+
 /* ---- init ---- */
 loadCache();
 pullFromGist();
