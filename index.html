@@ -570,6 +570,17 @@ fontMinus.addEventListener('click', () => changeFontScale(-FONT_STEP));
 fontPlus.addEventListener('click', () => changeFontScale(FONT_STEP));
 applyFontScale();
 
+/* ---- persistent storage ---- */
+if('storage' in navigator && 'persist' in navigator.storage){
+  navigator.storage.persisted().then(isPersisted => {
+    if(!isPersisted){
+      navigator.storage.persist().then(granted => {
+        console.log('Persistent storage', granted ? 'granted' : 'denied');
+      });
+    }
+  });
+}
+
 /* ---- service worker ---- */
 if('serviceWorker' in navigator){
   window.addEventListener('load', () => {
