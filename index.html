@@ -15,6 +15,13 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Где лежит">
+<script>
+  // применяем сохранённую тему до отрисовки, чтобы не было мигания
+  (function(){
+    var saved = localStorage.getItem('theme');
+    if(saved === 'light') document.documentElement.setAttribute('data-theme', 'light');
+  })();
+</script>
 <style>
   :root{
     --bg: #14140f;
@@ -26,6 +33,17 @@
     --accent-dim: #6b5714;
     --danger: #c4553d;
     --ok: #7fae5e;
+  }
+  html[data-theme="light"]{
+    --bg: #f4f2e8;
+    --bg-elev: #ffffff;
+    --line: #d9d6c6;
+    --text: #201f18;
+    --muted: #78765f;
+    --accent: #a8710a;
+    --accent-dim: #f0dfae;
+    --danger: #a8402a;
+    --ok: #4d7a35;
   }
   *{box-sizing:border-box; margin:0; padding:0;}
   html{ font-size: 16px; }
@@ -59,6 +77,29 @@
     font-weight: 600;
   }
   .header-right{ display:flex; align-items:center; gap: 10px; }
+  .theme-toggle{
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    border: 1px solid;
+    cursor: pointer;
+    font-size: 15px;
+    line-height: 1;
+    display:flex; align-items:center; justify-content:center;
+    padding: 0;
+    flex-shrink: 0;
+  }
+  .theme-toggle:active{ transform: translateY(1px); }
+  /* кнопка всегда окрашена в цвета ПРОТИВОПОЛОЖНОЙ темы — превью того, куда переключаешься */
+  .theme-toggle.to-light{
+    background: #f4f2e8;
+    color: #a8710a;
+    border-color: #d9d6c6;
+  }
+  .theme-toggle.to-dark{
+    background: #14140f;
+    color: #e8b923;
+    border-color: #38382c;
+  }
   .font-ctrl{
     display:flex;
     align-items:center;
@@ -229,6 +270,7 @@
   <header>
     <h1>Где лежит</h1>
     <div class="header-right">
+      <button class="theme-toggle" id="themeToggle" title="Переключить тему"></button>
       <div class="font-ctrl" title="Размер шрифта">
         <button id="fontMinus" aria-label="Уменьшить шрифт">A−</button>
         <span class="sep"></span>
@@ -327,6 +369,7 @@ const deleteCancelBtn = document.getElementById('deleteCancelBtn');
 const deleteConfirmBtn = document.getElementById('deleteConfirmBtn');
 const fontMinus = document.getElementById('fontMinus');
 const fontPlus = document.getElementById('fontPlus');
+const themeToggle = document.getElementById('themeToggle');
 let pendingDeleteId = null;
 
 function showToast(msg){
@@ -550,6 +593,32 @@ connectBtn.addEventListener('click', async () => {
   connectBtn.disabled = false;
   connectBtn.textContent = 'Подключить';
 });
+
+/* ---- theme ---- */
+function applyTheme(theme){
+  const metaTheme = document.querySelector('meta[name="theme-color"]');
+  if(theme === 'light'){
+    document.documentElement.setAttribute('data-theme', 'light');
+    themeToggle.textContent = '☾';
+    themeToggle.className = 'theme-toggle to-dark';
+    themeToggle.title = 'Переключить на тёмную';
+    if(metaTheme) metaTheme.setAttribute('content', '#f4f2e8');
+  }else{
+    document.documentElement.removeAttribute('data-theme');
+    themeToggle.textContent = '☀';
+    themeToggle.className = 'theme-toggle to-light';
+    themeToggle.title = 'Переключить на светлую';
+    if(metaTheme) metaTheme.setAttribute('content', '#14140f');
+  }
+}
+function toggleTheme(){
+  const current = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+  const next = current === 'light' ? 'dark' : 'light';
+  localStorage.setItem('theme', next);
+  applyTheme(next);
+}
+themeToggle.addEventListener('click', toggleTheme);
+applyTheme(localStorage.getItem('theme') === 'light' ? 'light' : 'dark');
 
 /* ---- font size ---- */
 const FONT_MIN = 90, FONT_MAX = 170, FONT_STEP = 10;
