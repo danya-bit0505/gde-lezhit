@@ -251,6 +251,23 @@
     border: 1px solid var(--line); border-radius: 3px; padding: 7px 9px; word-break: break-all;
   }
 
+  /* update bar */
+  .update-bar{
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 60;
+    display: none; align-items: center; justify-content: space-between; gap: 12px;
+    background: var(--accent); color: var(--bg);
+    padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom));
+    font-size: 0.875rem; font-weight: 700;
+  }
+  .update-bar.show{ display: flex; }
+  .update-bar.show + .toast{ bottom: 76px; }
+  .update-bar button{
+    background: var(--bg); color: var(--accent); border: none; border-radius: 3px;
+    font-family: inherit; font-size: 0.8125rem; font-weight: 700;
+    padding: 0.5rem 1rem; cursor: pointer;
+  }
+  .update-bar button:active{ transform: translateY(1px); }
+
   /* delete confirmation modal */
   .modal-danger{ border-color: var(--danger); }
   .modal-danger h2{ color: var(--danger); }
@@ -295,6 +312,11 @@
 
   <div class="list" id="list"></div>
   <div class="empty" id="empty" style="display:none">Пока пусто.</div>
+</div>
+
+<div class="update-bar" id="updateBar">
+  <span>Доступна новая версия</span>
+  <button id="updateBtn">Обновить</button>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -650,10 +672,29 @@ if('storage' in navigator && 'persist' in navigator.storage){
   });
 }
 
-/* ---- service worker ---- */
+/* ---- service worker + фоновые обновления ---- */
+const updateBar = document.getElementById('updateBar');
+document.getElementById('updateBtn').addEventListener('click', () => location.reload());
+
 if('serviceWorker' in navigator){
+  navigator.serviceWorker.addEventListener('message', e => {
+    if(e.data && e.data.type === 'UPDATE_READY') updateBar.classList.add('show');
+  });
+
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('sw.js').catch(e => console.error('SW error', e));
+    navigator.serviceWorker.register('sw.js').then(reg => {
+      // при каждом запуске SW сам проверяет обновление; дополнительно —
+      // когда приложение возвращается из фона и раз в 30 минут, пока открыто
+      const check = () => {
+        if(!navigator.onLine) return;
+        reg.update().catch(() => {});
+        if(navigator.serviceWorker.controller) navigator.serviceWorker.controller.postMessage('CHECK_UPDATE');
+      };
+      document.addEventListener('visibilitychange', () => {
+        if(document.visibilityState === 'visible') check();
+      });
+      setInterval(check, 30 * 60 * 1000);
+    }).catch(e => console.error('SW error', e));
   });
 }
 
