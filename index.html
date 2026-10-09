@@ -202,6 +202,16 @@
     font-weight: 700; line-height: 1;
   }
   .item .del:hover{ background: rgba(196,85,61,0.12); border-color: var(--danger); }
+  .item .edit{
+    background: none; border: 1px solid transparent; color: var(--accent);
+    font-size: 1.1rem; cursor: pointer; padding: 0.1em 0.4em; border-radius: 3px;
+    font-weight: 700; line-height: 1;
+  }
+  .item .edit:hover{ background: var(--accent-dim); border-color: var(--accent); }
+  .edit-error{
+    display: none; color: var(--danger); font-size: 0.75rem; font-weight: 700;
+    margin-top: 10px;
+  }
   mark{ background: var(--accent-dim); color: var(--accent); padding: 0 1px; border-radius: 2px; }
 
   .empty{
@@ -345,6 +355,21 @@
   </div>
 </div>
 
+<div class="overlay" id="editOverlay">
+  <div class="modal">
+    <h2>Изменить вещь</h2>
+    <label for="editName">Вещь</label>
+    <input id="editName" type="text" autocomplete="off">
+    <label for="editPlace">Где лежит</label>
+    <input id="editPlace" type="text" autocomplete="off">
+    <div class="edit-error" id="editError"></div>
+    <div class="row">
+      <button class="ghost" id="editCancelBtn">Отмена</button>
+      <button class="primary" id="editSaveBtn">Сохранить</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="deleteOverlay">
   <div class="modal modal-danger">
     <h2>Удалить вещь?</h2>
@@ -392,6 +417,13 @@ const deleteConfirmBtn = document.getElementById('deleteConfirmBtn');
 const fontMinus = document.getElementById('fontMinus');
 const fontPlus = document.getElementById('fontPlus');
 const themeToggle = document.getElementById('themeToggle');
+const editOverlay = document.getElementById('editOverlay');
+const editName = document.getElementById('editName');
+const editPlace = document.getElementById('editPlace');
+const editError = document.getElementById('editError');
+const editCancelBtn = document.getElementById('editCancelBtn');
+const editSaveBtn = document.getElementById('editSaveBtn');
+let editingId = null;
 let pendingDeleteId = null;
 
 function showToast(msg){
@@ -448,7 +480,8 @@ function render(){
       <span class="arrow">→</span>
       <span class="place">${highlight(it.place, q)}</span>
       <span class="meta">${timeAgo(it.updatedAt)}</span>
-      <button class="del" data-id="${it.id}" title="Удалить">✕</button>
+      <button class="edit" data-id="${it.id}" title="Изменить" aria-label="Изменить">✎</button>
+      <button class="del" data-id="${it.id}" title="Удалить" aria-label="Удалить">✕</button>
     </div>
   `).join('');
 }
@@ -550,6 +583,48 @@ function addItem(){
   nameEl.value = ''; placeEl.value = ''; nameEl.focus();
   saveCache(); render(); scheduleSync();
 }
+function openEdit(id){
+  const it = items.find(i => i.id === id);
+  if(!it) return;
+  editingId = id;
+  editName.value = it.name;
+  editPlace.value = it.place;
+  editError.style.display = 'none';
+  editOverlay.classList.add('show');
+  editPlace.focus();
+  editPlace.select();
+}
+
+function closeEdit(){
+  editingId = null;
+  editOverlay.classList.remove('show');
+}
+
+function saveEdit(){
+  const name = editName.value.trim();
+  const place = editPlace.value.trim();
+  if(!name){ editName.focus(); return; }
+  if(!place){ editPlace.focus(); return; }
+
+  const dup = items.find(i => i.id !== editingId && i.name.toLowerCase() === name.toLowerCase());
+  if(dup){
+    editError.textContent = 'Вещь «' + dup.name + '» уже есть в списке';
+    editError.style.display = 'block';
+    editName.focus();
+    return;
+  }
+
+  const it = items.find(i => i.id === editingId);
+  if(it && (it.name !== name || it.place !== place)){
+    it.name = name;
+    it.place = place;
+    it.updatedAt = Date.now();
+    saveCache(); render(); scheduleSync();
+    showToast('Сохранено');
+  }
+  closeEdit();
+}
+
 function requestDelete(id){
   const it = items.find(i => i.id === id);
   if(!it) return;
@@ -574,7 +649,19 @@ addBtn.addEventListener('click', addItem);
 [nameEl, placeEl].forEach(el => el.addEventListener('keydown', e => { if(e.key === 'Enter') addItem(); }));
 searchEl.addEventListener('input', render);
 searchEl.addEventListener('keydown', e => { if(e.key === 'Escape'){ searchEl.value=''; render(); searchEl.blur(); } });
-listEl.addEventListener('click', e => { const btn = e.target.closest('.del'); if(btn) requestDelete(btn.dataset.id); });
+listEl.addEventListener('click', e => {
+  const editBtn = e.target.closest('.edit');
+  if(editBtn){ openEdit(editBtn.dataset.id); return; }
+  const delBtn = e.target.closest('.del');
+  if(delBtn) requestDelete(delBtn.dataset.id);
+});
+editCancelBtn.addEventListener('click', closeEdit);
+editSaveBtn.addEventListener('click', saveEdit);
+[editName, editPlace].forEach(el => el.addEventListener('keydown', e => {
+  if(e.key === 'Enter') saveEdit();
+  if(e.key === 'Escape') closeEdit();
+}));
+editName.addEventListener('input', () => { editError.style.display = 'none'; });
 deleteCancelBtn.addEventListener('click', () => { pendingDeleteId = null; deleteOverlay.classList.remove('show'); });
 deleteConfirmBtn.addEventListener('click', confirmDelete);
 deleteOverlay.addEventListener('click', e => { if(e.target === deleteOverlay){ pendingDeleteId = null; deleteOverlay.classList.remove('show'); } });
