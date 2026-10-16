@@ -592,7 +592,9 @@ function openEdit(id){
   editError.style.display = 'none';
   editOverlay.classList.add('show');
   editPlace.focus();
-  editPlace.select();
+  // курсор в конец текста, без выделения
+  const end = editPlace.value.length;
+  editPlace.setSelectionRange(end, end);
 }
 
 function closeEdit(){
