@@ -337,6 +337,9 @@
   h1{ white-space: nowrap; }
   .add-form input{ min-width: 0; }
   #qrNextBtn{ flex: 1.8; }
+  .tech-info{ font-size: 0.75rem; color: var(--muted); overflow-wrap: anywhere; }
+  .tech-info b{ color: var(--text); }
+  .tech-info.weak, .tech-info.weak b{ color: var(--danger); }
 </style>
 </head>
 <body>
@@ -406,6 +409,9 @@
       <span>ID для второго устройства:</span>
       <b id="gistIdValue"></b>
     </div>
+
+    <h2 class="sep-h">Об устройстве</h2>
+    <p class="tech-info" id="idGenInfo"></p>
 
     <div class="row">
       <button class="ghost" id="cancelBtn">Закрыть</button>
@@ -519,6 +525,41 @@ const $ = id => document.getElementById(id);
 
 function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
 function lsSet(k, v){ try{ localStorage.setItem(k, v); }catch(e){ console.error(e); } }
+
+/* ===== генератор id =====
+   1) crypto.randomUUID     — Chrome 92+, Safari/iOS 15.4+, Firefox 95+
+   2) crypto.getRandomValues — тот же криптогенератор, есть почти везде (iOS 6+); собираем UUID v4 сами
+   3) Math.random + время    — крайний случай: первые 48 бит = миллисекунды (как UUID v7),
+                               так что совпасть могут только вещи, созданные в одну и ту же миллисекунду */
+function bytesToUuid(b){
+  const h = Array.from(b, x => x.toString(16).padStart(2, '0')).join('');
+  return h.slice(0, 8) + '-' + h.slice(8, 12) + '-' + h.slice(12, 16) + '-' + h.slice(16, 20) + '-' + h.slice(20);
+}
+const ID_GEN = (() => {
+  const c = typeof crypto !== 'undefined' ? crypto : null;
+  const ok = f => { try{ const a = f(), b = f(); return ID_RE.test(a) && ID_RE.test(b) && a !== b; }catch(e){ return false; } };
+  const gens = [
+    { key: 'uuid', name: 'crypto.randomUUID', note: 'основной, криптостойкий',
+      make: () => c.randomUUID() },
+    { key: 'grv', name: 'crypto.getRandomValues', note: 'запасной, криптостойкий',
+      make: () => {
+        const b = c.getRandomValues(new Uint8Array(16));
+        b[6] = (b[6] & 0x0f) | 0x40; b[8] = (b[8] & 0x3f) | 0x80;   // версия 4, вариант RFC 4122
+        return bytesToUuid(b);
+      } },
+    { key: 'math', name: 'Math.random + время', note: 'аварийный, не криптостойкий',
+      make: () => {
+        const b = new Uint8Array(16);
+        let t = Date.now();
+        for(let i = 5; i >= 0; i--){ b[i] = t % 256; t = Math.floor(t / 256); }
+        for(let i = 6; i < 16; i++) b[i] = Math.floor(Math.random() * 256);
+        b[6] = (b[6] & 0x0f) | 0x70; b[8] = (b[8] & 0x3f) | 0x80;   // версия 7
+        return bytesToUuid(b);
+      } }
+  ];
+  return gens.find(g => (g.key === 'math' || c) && ok(g.make));
+})();
+const newId = () => ID_GEN.make();
 
 let items = [];        // все записи, включая надгробия (deleted: true)
 let pending = {};      // id -> надгробие с другого устройства, ждёт ответа «удалить / оставить»
@@ -763,7 +804,7 @@ function addItem(){
     existing.updatedAt = Date.now();
     showToast('Обновлено: ' + name);
   }else{
-    items.push({ id: crypto.randomUUID(), name, place, owner: profile, updatedAt: Date.now() });
+    items.push({ id: newId(), name, place, owner: profile, updatedAt: Date.now() });
     showToast('Добавлено');
   }
   nameEl.value = ''; placeEl.value = ''; nameEl.focus();
@@ -1499,6 +1540,14 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('online', () => { if(token && gistId) syncGist(); });
 
 /* ===== запуск ===== */
+(() => {
+  const el = $('idGenInfo');
+  el.innerHTML = 'Генератор id: <b></b> <span></span>';
+  el.querySelector('b').textContent = ID_GEN.name;
+  el.querySelector('span').textContent = '(' + ID_GEN.note + ')';
+  el.classList.toggle('weak', ID_GEN.key === 'math');
+  console.info('Генератор id:', ID_GEN.name);
+})();
 loadCache();
 loadPending();
 render();
