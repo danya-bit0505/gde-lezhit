@@ -348,6 +348,33 @@
   .peer-forget{ background: none; border: 1px solid var(--line); color: var(--muted); font-family: inherit; font-size: 0.6875rem; padding: 0.35em 0.8em; border-radius: 3px; cursor: pointer; }
   .peer-forget:hover{ color: var(--danger); border-color: var(--danger); }
   #qrConfirm button{ padding: 1rem; font-size: 0.875rem; }
+
+  /* ---- вырез камеры, «остров» и закруглённые углы (iPhone, установленное приложение) ---- */
+  .wrap{
+    padding-top: calc(20px + env(safe-area-inset-top, 0px));
+    padding-left: calc(16px + env(safe-area-inset-left, 0px));
+    padding-right: calc(16px + env(safe-area-inset-right, 0px));
+    padding-bottom: calc(90px + env(safe-area-inset-bottom, 0px));
+  }
+  .overlay{
+    padding: calc(16px + env(safe-area-inset-top, 0px)) calc(16px + env(safe-area-inset-right, 0px))
+             calc(16px + env(safe-area-inset-bottom, 0px)) calc(16px + env(safe-area-inset-left, 0px));
+  }
+  .modal{ max-height: calc(100vh - 32px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); }
+  @supports (height: 100dvh){
+    .modal{ max-height: calc(100dvh - 32px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); }
+  }
+  .toast{ bottom: calc(20px + env(safe-area-inset-bottom, 0px)); }
+  .update-bar.show + .toast{ bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
+  .update-bar{
+    padding-left: calc(1rem + env(safe-area-inset-left, 0px));
+    padding-right: calc(1rem + env(safe-area-inset-right, 0px));
+  }
+  /* строка состояния iPhone всегда со светлыми значками: в светлой теме подкладываем под неё тёмную полосу */
+  html[data-theme="light"] body::after{
+    content: ""; position: fixed; top: 0; left: 0; right: 0; height: env(safe-area-inset-top, 0px);
+    background: #14140f; z-index: 100; pointer-events: none;
+  }
 </style>
 </head>
 <body>
