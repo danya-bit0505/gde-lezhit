@@ -290,6 +290,53 @@
   .delete-preview .arrow{ color: var(--muted); font-size: 0.8125rem; }
   .delete-preview .place{ font-size: 0.875rem; color: var(--accent); }
   .modal .danger-btn{ background: var(--danger); color: #fff; }
+
+  /* ---- общие правки ---- */
+  [hidden]{ display: none !important; }
+  .overlay.top{ z-index: 70; }
+  .modal{ max-height: calc(100vh - 32px); overflow-y: auto; }
+  .header-right{ flex-wrap: wrap; justify-content: flex-end; }
+  .icon-btn{
+    width: 30px; height: 30px; border-radius: 50%;
+    border: 1px solid var(--line); background: var(--bg-elev); color: var(--accent);
+    font-size: 15px; line-height: 1; cursor: pointer; padding: 0; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .icon-btn:hover{ border-color: var(--accent); }
+  .icon-btn:active{ transform: translateY(1px); }
+
+  /* ---- владельцы ---- */
+  .chips{ display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+  .chip{
+    background: var(--bg-elev); color: var(--muted); border: 1px solid var(--line);
+    border-radius: 999px; font-family: inherit; font-size: 0.75rem; font-weight: 700;
+    padding: 0.4em 0.9em; cursor: pointer;
+  }
+  .chip.on{ background: var(--accent); color: var(--bg); border-color: var(--accent); }
+  .item .owner{
+    font-size: 0.656rem; color: var(--muted); border: 1px solid var(--line);
+    border-radius: 999px; padding: 0.1em 0.6em; white-space: nowrap;
+  }
+
+  /* ---- окна настроек и QR ---- */
+  .modal .sep-h{ margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--line); }
+  .qr-choose{ display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+  .modal .big{ padding: 1rem; font-size: 0.875rem; flex: none; }
+  .qr-box{ display: flex; justify-content: center; margin: 6px 0 12px; }
+  .qr-box canvas{ background: #fff; border-radius: 4px; image-rendering: pixelated; max-width: 100%; }
+  .scan-box{ margin: 6px 0 12px; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; background: #000; }
+  .scan-box video{ display: block; width: 100%; max-height: 50vh; object-fit: cover; }
+  .qr-manual{ margin-top: 8px; font-size: 0.75rem; color: var(--muted); }
+  .qr-manual summary{ cursor: pointer; padding: 6px 0; }
+  .qr-manual textarea{
+    width: 100%; height: 90px; background: var(--bg); border: 1px solid var(--line); color: var(--text);
+    font-family: inherit; font-size: 0.6875rem; padding: 8px; border-radius: 3px; resize: vertical; word-break: break-all;
+  }
+  .qr-manual button{ margin-top: 6px; width: 100%; flex: none; }
+  #conflictText{ margin-top: 10px; color: var(--text); font-size: 0.8125rem; }
+  h1{ white-space: nowrap; }
+  .add-form input{ min-width: 0; }
+  #qrNextBtn{ flex: 1.8; }
 </style>
 </head>
 <body>
@@ -297,6 +344,7 @@
   <header>
     <h1>Где лежит</h1>
     <div class="header-right">
+      <button class="icon-btn" id="qrBtn" title="Синхронизация по QR" aria-label="Синхронизация по QR">⇄</button>
       <button class="theme-toggle" id="themeToggle" title="Переключить тему"></button>
       <div class="font-ctrl" title="Размер шрифта">
         <button id="fontMinus" aria-label="Уменьшить шрифт">A−</button>
@@ -313,6 +361,8 @@
   <div class="search-box">
     <input id="search" type="text" placeholder="Найти вещь…" autocomplete="off">
   </div>
+
+  <div class="chips" id="chips" hidden></div>
 
   <div class="add-form">
     <input id="itemName" type="text" placeholder="Вещь" autocomplete="off">
@@ -333,14 +383,23 @@
 
 <div class="overlay" id="overlay">
   <div class="modal">
-    <h2>Синхронизация</h2>
-    <p>Данные хранятся в приватном GitHub Gist. Один раз настрой на каждом устройстве — токен и id gist'а нужны одинаковые, чтобы устройства видели одни и те же вещи.</p>
+    <h2>Профиль</h2>
+    <label for="settingsName">Ваше имя (подписывает ваши вещи)</label>
+    <input id="settingsName" type="text" maxlength="40" autocomplete="off">
+    <div class="row"><button class="primary" id="saveNameBtn">Сохранить имя</button></div>
+
+    <h2 class="sep-h">Обмен по QR</h2>
+    <p>Синхронизация между устройствами рядом, без интернета.</p>
+    <div class="row"><button class="primary" id="openQrBtn">Открыть обмен по QR</button></div>
+
+    <h2 class="sep-h">GitHub Gist</h2>
+    <p>Данные хранятся в приватном GitHub Gist. Один раз настройте на каждом устройстве: токен и ID gist'а нужны одинаковые, чтобы устройства видели одни и те же вещи.</p>
 
     <label>Personal Access Token (scope: gist)</label>
     <input id="tokenInput" type="password" placeholder="ghp_xxxxxxxxxxxx" autocomplete="off">
     <p style="margin-top:6px">Создать: <a href="https://github.com/settings/tokens/new?scopes=gist&description=gde-lezhit" target="_blank">github.com/settings/tokens</a> → scope <b>gist</b>.</p>
 
-    <label>Gist ID (оставь пустым при первой настройке — создастся новый)</label>
+    <label>Gist ID (оставьте пустым при первой настройке: создастся новый)</label>
     <input id="gistIdInput" type="text" placeholder="автоматически" autocomplete="off">
 
     <div id="gistIdDisplay" style="display:none" class="gist-id-box">
@@ -349,8 +408,72 @@
     </div>
 
     <div class="row">
-      <button class="ghost" id="cancelBtn">Отмена</button>
+      <button class="ghost" id="cancelBtn">Закрыть</button>
       <button class="primary" id="connectBtn">Подключить</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="qrOverlay">
+  <div class="modal">
+    <h2 id="qrTitle">Обмен по QR</h2>
+    <p id="qrHint"></p>
+
+    <div id="qrChoose" class="qr-choose">
+      <button class="primary big" id="qrStartBtn">Показать код</button>
+      <button class="ghost big" id="qrJoinBtn">Сканировать код</button>
+    </div>
+
+    <div id="qrShow" hidden>
+      <div class="qr-box"><canvas id="qrCanvas" width="0" height="0"></canvas></div>
+      <details class="qr-manual" id="qrManualShow">
+        <summary>Код текстом (если камера не работает)</summary>
+        <textarea id="qrCodeText" readonly></textarea>
+        <button class="ghost" id="qrCopyBtn">Скопировать</button>
+      </details>
+    </div>
+
+    <div id="qrScan" hidden>
+      <div class="scan-box"><video id="qrVideo" playsinline muted></video></div>
+      <details class="qr-manual" id="qrManualScan">
+        <summary>Ввести код вручную</summary>
+        <textarea id="qrPasteText" placeholder="Вставьте код сюда"></textarea>
+        <button class="ghost" id="qrPasteBtn">Принять код</button>
+      </details>
+    </div>
+
+    <div class="row">
+      <button class="ghost" id="qrCloseBtn">Закрыть</button>
+      <button class="primary" id="qrNextBtn" hidden></button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay top" id="profileOverlay">
+  <div class="modal">
+    <h2>Как вас зовут?</h2>
+    <p>Имя подписывает ваши вещи, когда списки нескольких людей показываются вместе.</p>
+    <input id="profileInput" type="text" maxlength="40" placeholder="Например, Даня" autocomplete="off">
+    <div class="row">
+      <button class="ghost" id="profileCancelBtn" hidden>Отмена</button>
+      <button class="primary" id="profileSaveBtn">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay top" id="conflictOverlay">
+  <div class="modal modal-danger">
+    <h2>Удалено на другом устройстве</h2>
+    <div class="delete-preview">
+      <span class="name" id="conflictName"></span>
+      <span class="arrow">→</span>
+      <span class="place" id="conflictPlace"></span>
+    </div>
+    <p id="conflictText"></p>
+    <p id="conflictMore"></p>
+    <div class="row">
+      <button class="ghost" id="conflictKeepBtn">Оставить</button>
+      <button class="danger-btn" id="conflictDeleteBtn">Удалить у нас</button>
     </div>
   </div>
 </div>
@@ -385,61 +508,55 @@
   </div>
 </div>
 
+<script src="qrcode.js"></script>
 <script>
+/* ===== хранилище и состояние ===== */
 const GIST_FILENAME = 'items.json';
-let items = [];
-let token = localStorage.getItem('gh_token') || '';
-let gistId = localStorage.getItem('gist_id') || '';
-let syncTimer = null;
+const TOMBSTONE_TTL = 90 * 24 * 3600 * 1000;   // надгробия старше 90 дней чистим
+const MAX_ITEMS = 5000;
+const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+const $ = id => document.getElementById(id);
 
-const listEl = document.getElementById('list');
-const emptyEl = document.getElementById('empty');
-const searchEl = document.getElementById('search');
-const nameEl = document.getElementById('itemName');
-const placeEl = document.getElementById('itemPlace');
-const addBtn = document.getElementById('addBtn');
-const toastEl = document.getElementById('toast');
-const statusDot = document.getElementById('statusDot');
-const statusText = document.getElementById('statusText');
-const statusBtn = document.getElementById('statusBtn');
-const overlay = document.getElementById('overlay');
-const tokenInput = document.getElementById('tokenInput');
-const gistIdInput = document.getElementById('gistIdInput');
-const gistIdDisplay = document.getElementById('gistIdDisplay');
-const gistIdValue = document.getElementById('gistIdValue');
-const connectBtn = document.getElementById('connectBtn');
-const cancelBtn = document.getElementById('cancelBtn');
-const deleteOverlay = document.getElementById('deleteOverlay');
-const deleteItemName = document.getElementById('deleteItemName');
-const deleteItemPlace = document.getElementById('deleteItemPlace');
-const deleteCancelBtn = document.getElementById('deleteCancelBtn');
-const deleteConfirmBtn = document.getElementById('deleteConfirmBtn');
-const fontMinus = document.getElementById('fontMinus');
-const fontPlus = document.getElementById('fontPlus');
-const themeToggle = document.getElementById('themeToggle');
-const editOverlay = document.getElementById('editOverlay');
-const editName = document.getElementById('editName');
-const editPlace = document.getElementById('editPlace');
-const editError = document.getElementById('editError');
-const editCancelBtn = document.getElementById('editCancelBtn');
-const editSaveBtn = document.getElementById('editSaveBtn');
-let editingId = null;
-let pendingDeleteId = null;
+function lsGet(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+function lsSet(k, v){ try{ localStorage.setItem(k, v); }catch(e){ console.error(e); } }
 
+let items = [];        // все записи, включая надгробия (deleted: true)
+let pending = {};      // id -> надгробие с другого устройства, ждёт ответа «удалить / оставить»
+let profile = lsGet('profile') || '';
+let ownerFilter = lsGet('owner_filter') || '*';
+let token = lsGet('gh_token') || '';
+let gistId = lsGet('gist_id') || '';
+let syncTimer = null, syncing = false, resync = false;
+let editingId = null, pendingDeleteId = null, currentConflictId = null, profileRequired = false;
+
+const listEl = $('list'), emptyEl = $('empty'), searchEl = $('search'), chipsEl = $('chips');
+const nameEl = $('itemName'), placeEl = $('itemPlace'), addBtn = $('addBtn'), toastEl = $('toast');
+const statusDot = $('statusDot'), statusText = $('statusText'), statusBtn = $('statusBtn');
+const overlay = $('overlay'), tokenInput = $('tokenInput'), gistIdInput = $('gistIdInput');
+const gistIdDisplay = $('gistIdDisplay'), gistIdValue = $('gistIdValue');
+const connectBtn = $('connectBtn'), cancelBtn = $('cancelBtn');
+const deleteOverlay = $('deleteOverlay'), deleteItemName = $('deleteItemName'), deleteItemPlace = $('deleteItemPlace');
+const deleteCancelBtn = $('deleteCancelBtn'), deleteConfirmBtn = $('deleteConfirmBtn');
+const fontMinus = $('fontMinus'), fontPlus = $('fontPlus'), themeToggle = $('themeToggle');
+const editOverlay = $('editOverlay'), editName = $('editName'), editPlace = $('editPlace'), editError = $('editError');
+const editCancelBtn = $('editCancelBtn'), editSaveBtn = $('editSaveBtn');
+const profileOverlay = $('profileOverlay'), profileInput = $('profileInput');
+const profileSaveBtn = $('profileSaveBtn'), profileCancelBtn = $('profileCancelBtn');
+const conflictOverlay = $('conflictOverlay');
+
+/* ===== мелкие помощники ===== */
 function showToast(msg){
   toastEl.textContent = msg;
   toastEl.classList.add('show');
   clearTimeout(showToast._t);
-  showToast._t = setTimeout(()=> toastEl.classList.remove('show'), 1600);
+  showToast._t = setTimeout(() => toastEl.classList.remove('show'), 1800);
 }
-
 function setStatus(state, text){
   statusDot.className = 'dot' + (state ? ' ' + state : '');
   statusText.textContent = text;
 }
-
 function escapeHtml(s){
-  return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 function highlight(text, query){
   const safe = escapeHtml(text);
@@ -460,12 +577,138 @@ function timeAgo(ts){
   return new Date(ts).toLocaleDateString('ru-RU');
 }
 
+/* ===== модель данных: надгробия и слияние ===== */
+// Приводим запись (локальную или чужую) к безопасному виду; мусор отбрасываем.
+function normalizeItem(r){
+  if(!r || typeof r !== 'object') return null;
+  if(typeof r.id !== 'string' || !ID_RE.test(r.id)) return null;
+  const ts = Number(r.updatedAt);
+  if(!Number.isFinite(ts) || ts <= 0) return null;
+  const o = {
+    id: r.id,
+    name: String(r.name == null ? '' : r.name).slice(0, 200),
+    place: String(r.place == null ? '' : r.place).slice(0, 200),
+    updatedAt: Math.floor(ts)
+  };
+  if(r.owner) o.owner = String(r.owner).slice(0, 40);
+  if(r.deleted){
+    o.deleted = true;
+    if(r.deletedBy) o.deletedBy = String(r.deletedBy).slice(0, 40);
+  }
+  return o;
+}
+
+// Из двух версий одной записи выбираем «победителя»: свежее updatedAt;
+// при равенстве удаление сильнее, затем больший owner (чтобы оба устройства выбрали одно и то же).
+function pickNewer(l, r){
+  if(r.updatedAt !== l.updatedAt) return r.updatedAt > l.updatedAt ? r : l;
+  if(!!r.deleted !== !!l.deleted) return r.deleted ? r : l;
+  return (r.owner || '') > (l.owner || '') ? r : l;
+}
+
+// Чистое объединение «побеждает новейшее». Результат не зависит от порядка аргументов.
+function mergeNewest(a, b){
+  const map = new Map();
+  for(const it of a) map.set(it.id, it);
+  for(const it of b){
+    const cur = map.get(it.id);
+    map.set(it.id, cur ? pickNewer(cur, it) : it);
+  }
+  return [...map.values()];
+}
+
+// Слияние для устройства: то же объединение, но чужие удаления живых у нас вещей
+// не применяются, а возвращаются как conflicts (на них отвечает человек).
+function mergeItems(local, remote){
+  const localMap = new Map(local.map(i => [i.id, i]));
+  const merged = mergeNewest(local, remote);
+  const result = [], conflicts = [];
+  let added = 0, updated = 0;
+  for(const m of merged){
+    const l = localMap.get(m.id);
+    if(!l){ result.push(m); if(!m.deleted) added++; continue; }
+    if(m === l){ result.push(l); continue; }
+    if(m.deleted && !l.deleted){ result.push(l); conflicts.push(m); continue; }
+    result.push(m);
+    if(!m.deleted){ if(l.deleted) added++; else updated++; }
+  }
+  return { items: result, conflicts, added, updated, forRemote: merged };
+}
+
+function sameSet(a, b){
+  if(a.length !== b.length) return false;
+  const m = new Map(a.map(i => [i.id, i]));
+  return b.every(i => {
+    const x = m.get(i.id);
+    return x && x.updatedAt === i.updatedAt && !!x.deleted === !!i.deleted &&
+           (x.owner || '') === (i.owner || '') && x.name === i.name && x.place === i.place;
+  });
+}
+
+function isOldTombstone(i){ return i.deleted && Date.now() - i.updatedAt > TOMBSTONE_TTL && !pending[i.id]; }
+function gcTombstones(){ items = items.filter(i => !isOldTombstone(i)); }
+
+function loadCache(){
+  try{
+    const raw = lsGet('items_cache');
+    const arr = raw ? JSON.parse(raw) : [];
+    items = (Array.isArray(arr) ? arr : []).map(normalizeItem).filter(Boolean);
+  }catch(e){ items = []; }
+}
+function saveCache(){ lsSet('items_cache', JSON.stringify(items)); }
+function loadPending(){
+  try{
+    const raw = lsGet('pending_deletes');
+    const obj = raw ? JSON.parse(raw) : {};
+    pending = {};
+    for(const id of Object.keys(obj || {})){ const t = normalizeItem(obj[id]); if(t && t.deleted) pending[t.id] = t; }
+  }catch(e){ pending = {}; }
+}
+function savePending(){ lsSet('pending_deletes', JSON.stringify(pending)); }
+
+// Единая точка приёма чужого списка: Gist, QR, что угодно ещё.
+function applyRemote(remoteRaw){
+  if(!Array.isArray(remoteRaw)) return null;
+  const remote = remoteRaw.slice(0, MAX_ITEMS).map(normalizeItem).filter(Boolean);
+  const r = mergeItems(items, remote);
+  items = r.items;
+  for(const t of r.conflicts){
+    const cur = pending[t.id];
+    if(!cur || t.updatedAt > cur.updatedAt) pending[t.id] = t;
+  }
+  gcTombstones();
+  r.forRemote = r.forRemote.filter(i => !isOldTombstone(i));
+  r.remote = remote;
+  saveCache(); savePending(); render(); showNextPending();
+  return r;
+}
+
+/* ===== отрисовка ===== */
+const ownerLabel = o => o || '—';
+function ownersOf(list){
+  return [...new Set(list.map(i => i.owner || ''))].sort((a, b) => a.localeCompare(b, 'ru'));
+}
+
+function renderChips(owners, multi){
+  chipsEl.hidden = !multi;
+  if(!multi){ chipsEl.innerHTML = ''; return; }
+  chipsEl.innerHTML =
+    `<button class="chip${ownerFilter === '*' ? ' on' : ''}" data-owner="*">Все</button>` +
+    owners.map(o => `<button class="chip${ownerFilter === o ? ' on' : ''}" data-owner="${escapeHtml(o)}">${escapeHtml(ownerLabel(o))}</button>`).join('');
+}
+
 function render(){
+  const live = items.filter(i => !i.deleted);
+  const owners = ownersOf(live);
+  const multi = owners.length > 1;
+  if(ownerFilter !== '*' && !owners.includes(ownerFilter)) ownerFilter = '*';
+  renderChips(owners, multi);
+
   const q = searchEl.value.trim().toLowerCase();
-  const filtered = q
-    ? items.filter(it => it.name.toLowerCase().includes(q) || it.place.toLowerCase().includes(q))
-    : items;
-  const sorted = [...filtered].sort((a,b) => b.updatedAt - a.updatedAt);
+  let list = live;
+  if(multi && ownerFilter !== '*') list = list.filter(i => (i.owner || '') === ownerFilter);
+  if(q) list = list.filter(it => it.name.toLowerCase().includes(q) || it.place.toLowerCase().includes(q));
+  const sorted = [...list].sort((a, b) => b.updatedAt - a.updatedAt);
 
   if(sorted.length === 0){
     listEl.innerHTML = '';
@@ -475,75 +718,195 @@ function render(){
   }
   emptyEl.style.display = 'none';
   listEl.innerHTML = sorted.map(it => `
-    <div class="item" data-id="${it.id}">
+    <div class="item" data-id="${escapeHtml(it.id)}">
       <span class="name">${highlight(it.name, q)}</span>
       <span class="arrow">→</span>
       <span class="place">${highlight(it.place, q)}</span>
+      ${multi ? `<span class="owner">${escapeHtml(ownerLabel(it.owner || ''))}</span>` : ''}
       <span class="meta">${timeAgo(it.updatedAt)}</span>
-      <button class="edit" data-id="${it.id}" title="Изменить" aria-label="Изменить">✎</button>
-      <button class="del" data-id="${it.id}" title="Удалить" aria-label="Удалить">✕</button>
+      <button class="edit" data-id="${escapeHtml(it.id)}" title="Изменить" aria-label="Изменить">✎</button>
+      <button class="del" data-id="${escapeHtml(it.id)}" title="Удалить" aria-label="Удалить">✕</button>
     </div>
   `).join('');
 }
 
-/* ---- local cache (instant load) ---- */
-function loadCache(){
-  try{
-    const raw = localStorage.getItem('items_cache');
-    items = raw ? JSON.parse(raw) : [];
-  }catch(e){ items = []; }
-  render();
+/* ===== профиль (имя владельца) ===== */
+function openProfile(required){
+  profileRequired = !!required;
+  profileInput.value = profile;
+  profileCancelBtn.hidden = profileRequired;
+  profileOverlay.classList.add('show');
+  setTimeout(() => profileInput.focus(), 50);
 }
-function saveCache(){
-  localStorage.setItem('items_cache', JSON.stringify(items));
+function saveProfile(){
+  const name = profileInput.value.trim().slice(0, 40);
+  if(!name){ profileInput.focus(); return; }
+  profile = name;
+  lsSet('profile', profile);
+  let claimed = false;
+  items.forEach(i => { if(!i.owner){ i.owner = profile; claimed = true; } });   // старые вещи получают владельца
+  if(claimed) saveCache();
+  profileOverlay.classList.remove('show');
+  render();
+  if(claimed) scheduleSync();
 }
 
-/* ---- gist sync ---- */
-async function pullFromGist(){
+/* ===== операции с вещами ===== */
+function addItem(){
+  const name = nameEl.value.trim();
+  const place = placeEl.value.trim();
+  if(!name || !place){ (!name ? nameEl : placeEl).focus(); return; }
+  if(!profile){ openProfile(true); return; }
+  const existing = items.find(it => !it.deleted && (it.owner || '') === profile && it.name.toLowerCase() === name.toLowerCase());
+  if(existing){
+    existing.place = place;
+    existing.updatedAt = Date.now();
+    showToast('Обновлено: ' + name);
+  }else{
+    items.push({ id: crypto.randomUUID(), name, place, owner: profile, updatedAt: Date.now() });
+    showToast('Добавлено');
+  }
+  nameEl.value = ''; placeEl.value = ''; nameEl.focus();
+  saveCache(); render(); scheduleSync();
+}
+
+function openEdit(id){
+  const it = items.find(i => i.id === id && !i.deleted);
+  if(!it) return;
+  editingId = id;
+  editName.value = it.name;
+  editPlace.value = it.place;
+  editError.style.display = 'none';
+  editOverlay.classList.add('show');
+  editPlace.focus();
+  const end = editPlace.value.length;      // курсор в конец, без выделения
+  editPlace.setSelectionRange(end, end);
+}
+function closeEdit(){ editingId = null; editOverlay.classList.remove('show'); }
+function saveEdit(){
+  const name = editName.value.trim();
+  const place = editPlace.value.trim();
+  if(!name){ editName.focus(); return; }
+  if(!place){ editPlace.focus(); return; }
+  const it = items.find(i => i.id === editingId && !i.deleted);
+  if(!it){ closeEdit(); return; }
+  const dup = items.find(i => i.id !== editingId && !i.deleted && (i.owner || '') === (it.owner || '') && i.name.toLowerCase() === name.toLowerCase());
+  if(dup){
+    editError.textContent = 'Вещь «' + dup.name + '» уже есть в списке';
+    editError.style.display = 'block';
+    editName.focus();
+    return;
+  }
+  if(it.name !== name || it.place !== place){
+    it.name = name;
+    it.place = place;
+    it.updatedAt = Date.now();
+    saveCache(); render(); scheduleSync();
+    showToast('Сохранено');
+  }
+  closeEdit();
+}
+
+function requestDelete(id){
+  const it = items.find(i => i.id === id && !i.deleted);
+  if(!it) return;
+  pendingDeleteId = id;
+  deleteItemName.textContent = it.name;
+  deleteItemPlace.textContent = it.place;
+  deleteOverlay.classList.add('show');
+}
+function confirmDelete(){
+  const it = items.find(i => i.id === pendingDeleteId);
+  if(it){
+    // не вырезаем, а ставим надгробие, чтобы удаление дошло до других устройств
+    it.deleted = true;
+    it.deletedBy = profile || undefined;
+    if(!it.deletedBy) delete it.deletedBy;
+    it.updatedAt = Date.now();
+    saveCache(); render(); scheduleSync();
+    showToast('Удалено');
+  }
+  pendingDeleteId = null;
+  deleteOverlay.classList.remove('show');
+}
+
+/* ===== окно «удалили на другом устройстве» ===== */
+function showNextPending(){
+  for(const id of Object.keys(pending)){          // убираем вопросы, которые уже потеряли смысл
+    const l = items.find(i => i.id === id);
+    if(!l || l.deleted || l.updatedAt > pending[id].updatedAt) delete pending[id];
+  }
+  savePending();
+  const ids = Object.keys(pending);
+  if(!ids.length){ conflictOverlay.classList.remove('show'); currentConflictId = null; return; }
+  if(!currentConflictId || !pending[currentConflictId]) currentConflictId = ids[0];
+  const t = pending[currentConflictId];
+  const l = items.find(i => i.id === currentConflictId);
+  $('conflictName').textContent = l.name;
+  $('conflictPlace').textContent = l.place;
+  $('conflictText').textContent = (t.deletedBy || 'Кто-то') + ' удалил(а) эту вещь на другом устройстве (' + timeAgo(t.updatedAt) + '). Удалить и у нас?';
+  $('conflictMore').textContent = ids.length > 1 ? 'Ещё вопросов: ' + (ids.length - 1) : '';
+  conflictOverlay.classList.add('show');
+}
+function resolveConflict(del){
+  const id = currentConflictId;
+  const t = id && pending[id];
+  const l = id && items.find(i => i.id === id);
+  if(t && l){
+    if(del){
+      items = items.map(i => i.id === id ? t : i);
+    }else{
+      l.updatedAt = Math.max(Date.now(), t.updatedAt + 1);   // «оставить» = новая версия, свежее чужого удаления
+      delete l.deleted; delete l.deletedBy;
+    }
+  }
+  delete pending[id];
+  currentConflictId = null;
+  saveCache(); savePending(); render(); scheduleSync();
+  showNextPending();
+}
+
+/* ===== синхронизация через GitHub Gist (со слиянием) ===== */
+function scheduleSync(){
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(syncGist, 600);
+}
+
+async function syncGist(){
   if(!token || !gistId){ setStatus('', 'не подключено'); return; }
+  if(syncing){ resync = true; return; }
+  syncing = true;
   setStatus('busy', 'синхронизация…');
   try{
-    const res = await fetch(`https://api.github.com/gists/${gistId}`, {
-      headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github+json' }
-    });
+    const headers = { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github+json' };
+    const res = await fetch(`https://api.github.com/gists/${gistId}`, { headers });
     if(!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     const file = data.files && data.files[GIST_FILENAME];
-    if(file && file.content){
-      items = JSON.parse(file.content);
-      saveCache();
-      render();
+    let remote = [];
+    if(file){
+      let content = file.content;
+      if(file.truncated && file.raw_url) content = await (await fetch(file.raw_url, { headers })).text();
+      try{ remote = JSON.parse(content || '[]'); }catch(e){ throw new Error('битый JSON в gist, запись отменена'); }
+    }
+    if(!Array.isArray(remote)) remote = [];
+    const r = applyRemote(remote);
+    // в gist уходит «новейшее из обоих»: так наша старая запись не затрёт чужое удаление
+    if(r && !sameSet(r.remote, r.forRemote)){
+      const put = await fetch(`https://api.github.com/gists/${gistId}`, {
+        method: 'PATCH',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ files: { [GIST_FILENAME]: { content: JSON.stringify(r.forRemote) } } })
+      });
+      if(!put.ok) throw new Error('HTTP ' + put.status);
     }
     setStatus('ok', 'синхронизировано');
   }catch(e){
     console.error(e);
-    setStatus('err', 'ошибка связи');
-  }
-}
-
-function scheduleSync(){
-  clearTimeout(syncTimer);
-  syncTimer = setTimeout(pushToGist, 600);
-}
-
-async function pushToGist(){
-  if(!token || !gistId) return;
-  setStatus('busy', 'сохранение…');
-  try{
-    const res = await fetch(`https://api.github.com/gists/${gistId}`, {
-      method: 'PATCH',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Accept': 'application/vnd.github+json',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ files: { [GIST_FILENAME]: { content: JSON.stringify(items, null, 2) } } })
-    });
-    if(!res.ok) throw new Error('HTTP ' + res.status);
-    setStatus('ok', 'синхронизировано');
-  }catch(e){
-    console.error(e);
-    setStatus('err', 'не сохранилось, повтор при след. изменении');
+    setStatus('err', navigator.onLine ? 'ошибка связи' : 'нет сети');
+  }finally{
+    syncing = false;
+    if(resync){ resync = false; scheduleSync(); }
   }
 }
 
@@ -558,7 +921,7 @@ async function createGist(){
     body: JSON.stringify({
       description: 'gde-lezhit data',
       public: false,
-      files: { [GIST_FILENAME]: { content: JSON.stringify(items.length ? items : [], null, 2) } }
+      files: { [GIST_FILENAME]: { content: JSON.stringify(items) } }
     })
   });
   if(!res.ok) throw new Error('HTTP ' + res.status);
@@ -566,97 +929,406 @@ async function createGist(){
   return data.id;
 }
 
-/* ---- item ops ---- */
-function addItem(){
-  const name = nameEl.value.trim();
-  const place = placeEl.value.trim();
-  if(!name || !place){ (!name ? nameEl : placeEl).focus(); return; }
-  const existing = items.find(it => it.name.toLowerCase() === name.toLowerCase());
-  if(existing){
-    existing.place = place;
-    existing.updatedAt = Date.now();
-    showToast('Обновлено: ' + name);
-  }else{
-    items.push({ id: crypto.randomUUID(), name, place, updatedAt: Date.now() });
-    showToast('Добавлено');
+/* ===== обмен по QR (WebRTC без сервера и без интернета) ===== */
+let pc = null, dc = null, qrExpect = null, qrStream = null, scanTimer = null, scanning = false;
+let connectTimer = null, got = { items: false, done: false }, lastStats = null, msgSeq = 0, assembling = {};
+const qrOverlay = $('qrOverlay'), qrTitle = $('qrTitle'), qrHint = $('qrHint');
+const qrNextBtn = $('qrNextBtn'), qrCloseBtn = $('qrCloseBtn'), qrVideo = $('qrVideo');
+
+/* --- сжатие SDP: в QR кладём только то, без чего соединение не соберётся --- */
+const SETUP_TO_CHAR = { actpass: 'a', active: 'c', passive: 'p' };
+const CHAR_TO_SETUP = { a: 'actpass', c: 'active', p: 'passive' };
+
+function fpToB64(fp){
+  const bytes = fp.split(':').map(h => parseInt(h, 16));
+  return btoa(String.fromCharCode(...bytes)).replace(/=+$/, '');
+}
+function b64ToFp(b64){
+  return [...atob(b64)].map(c => c.charCodeAt(0).toString(16).padStart(2, '0').toUpperCase()).join(':');
+}
+
+function sdpToPayload(sdp, type){
+  const g = re => { const m = sdp.match(re); return m ? m[1] : null; };
+  const u = g(/a=ice-ufrag:(\S+)/), p = g(/a=ice-pwd:(\S+)/);
+  const fp = g(/a=fingerprint:sha-256 (\S+)/i);
+  const s = SETUP_TO_CHAR[g(/a=setup:(\S+)/)];
+  if(!u || !p || !fp || !s) throw new Error('неожиданный формат SDP');
+  const all = [], re = /a=candidate:\S+ 1 udp \d+ (\S+) (\d+) typ host/g;
+  let m;
+  while((m = re.exec(sdp))) all.push([m[1], +m[2]]);
+  const v4 = all.filter(c => !c[0].includes(':'));
+  const v6 = all.filter(c => c[0].includes(':') && !/^fe80/i.test(c[0]));
+  const cands = (v4.length ? v4 : v6).slice(0, 3);
+  return { v: 1, t: type, u, p, f: fpToB64(fp), s, c: cands };
+}
+
+function parseCode(text){
+  let o;
+  try{ o = JSON.parse(String(text).trim()); }catch(e){ return null; }
+  if(!o || o.v !== 1 || (o.t !== 'o' && o.t !== 'a')) return null;
+  if(typeof o.u !== 'string' || !/^[A-Za-z0-9+\/]{3,64}$/.test(o.u)) return null;
+  if(typeof o.p !== 'string' || !/^[A-Za-z0-9+\/]{8,128}$/.test(o.p)) return null;
+  if(typeof o.f !== 'string' || !/^[A-Za-z0-9+\/]{43}$/.test(o.f)) return null;
+  if(!CHAR_TO_SETUP[o.s]) return null;
+  if(!Array.isArray(o.c) || !o.c.length || o.c.length > 6) return null;
+  for(const c of o.c){
+    if(!Array.isArray(c) || typeof c[0] !== 'string' || !/^[A-Za-z0-9.:\-]{1,80}$/.test(c[0])) return null;
+    if(!Number.isInteger(c[1]) || c[1] < 1 || c[1] > 65535) return null;
   }
-  nameEl.value = ''; placeEl.value = ''; nameEl.focus();
-  saveCache(); render(); scheduleSync();
-}
-function openEdit(id){
-  const it = items.find(i => i.id === id);
-  if(!it) return;
-  editingId = id;
-  editName.value = it.name;
-  editPlace.value = it.place;
-  editError.style.display = 'none';
-  editOverlay.classList.add('show');
-  editPlace.focus();
-  // курсор в конец текста, без выделения
-  const end = editPlace.value.length;
-  editPlace.setSelectionRange(end, end);
+  return o;
 }
 
-function closeEdit(){
-  editingId = null;
-  editOverlay.classList.remove('show');
+function buildSdp(pl){
+  const lines = [
+    'v=0', 'o=- 1 2 IN IP4 127.0.0.1', 's=-', 't=0 0',
+    'a=group:BUNDLE 0', 'a=msid-semantic: WMS',
+    'm=application 9 UDP/DTLS/SCTP webrtc-datachannel', 'c=IN IP4 0.0.0.0',
+    'a=ice-ufrag:' + pl.u, 'a=ice-pwd:' + pl.p,
+    'a=fingerprint:sha-256 ' + b64ToFp(pl.f),
+    'a=setup:' + CHAR_TO_SETUP[pl.s],
+    'a=mid:0', 'a=sctp-port:5000', 'a=max-message-size:262144'
+  ];
+  pl.c.forEach((c, i) => lines.push(`a=candidate:${i + 1} 1 udp ${2122260223 - i} ${c[0]} ${c[1]} typ host`));
+  lines.push('a=end-of-candidates');
+  return lines.join('\r\n') + '\r\n';
 }
 
-function saveEdit(){
-  const name = editName.value.trim();
-  const place = editPlace.value.trim();
-  if(!name){ editName.focus(); return; }
-  if(!place){ editPlace.focus(); return; }
+function waitIce(conn, ms){
+  return new Promise(resolve => {
+    if(conn.iceGatheringState === 'complete') return resolve();
+    const done = () => { clearTimeout(t); conn.removeEventListener('icegatheringstatechange', h); resolve(); };
+    const h = () => { if(conn.iceGatheringState === 'complete') done(); };
+    const t = setTimeout(done, ms || 4000);
+    conn.addEventListener('icegatheringstatechange', h);
+  });
+}
 
-  const dup = items.find(i => i.id !== editingId && i.name.toLowerCase() === name.toLowerCase());
-  if(dup){
-    editError.textContent = 'Вещь «' + dup.name + '» уже есть в списке';
-    editError.style.display = 'block';
-    editName.focus();
+/* --- QR: показ --- */
+function drawQr(canvas, text){
+  if(!window.QRMini) throw new Error('qrcode.js не загружен');
+  let qr = QRMini.create(text, 'M');
+  if(qr.getModuleCount() > 61) qr = QRMini.create(text, 'L');   // чем плотнее код, тем мельче модули: уступаем в защите ради читаемости
+  const n = qr.getModuleCount(), quiet = 4, total = n + quiet * 2;
+  const dpr = window.devicePixelRatio || 1;
+  const avail = canvas.parentElement ? canvas.parentElement.clientWidth : 0;   // QR на всю ширину окна: крупнее модули, надёжнее скан
+  const box = Math.min(avail || (window.innerWidth - 72), 400);
+  const cell = Math.max(2, Math.floor(box * dpr / total));
+  canvas.width = canvas.height = cell * total;
+  canvas.style.width = canvas.style.height = (canvas.width / dpr) + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#000';
+  for(let r = 0; r < n; r++)
+    for(let c = 0; c < n; c++)
+      if(qr.isDark(r, c)) ctx.fillRect((c + quiet) * cell, (r + quiet) * cell, cell, cell);
+}
+
+function showCode(pl){
+  const text = JSON.stringify(pl);
+  $('qrCodeText').value = text;
+  try{ drawQr($('qrCanvas'), text); }
+  catch(e){ console.error(e); $('qrCanvas').width = $('qrCanvas').height = 0; qrHint.textContent = 'Не удалось нарисовать QR. Откройте «Код текстом» ниже.'; $('qrManualShow').open = true; }
+}
+
+/* --- QR: сканирование --- */
+function stopScan(){
+  scanning = false;
+  clearTimeout(scanTimer);
+  if(qrStream){ qrStream.getTracks().forEach(t => t.stop()); qrStream = null; }
+  qrVideo.srcObject = null;
+}
+
+function loadJsQR(){
+  return new Promise(resolve => {
+    if(window.jsQR) return resolve(window.jsQR);
+    const s = document.createElement('script');
+    s.src = 'jsQR.js';
+    s.onload = () => resolve(window.jsQR || null);
+    s.onerror = () => resolve(null);
+    document.head.appendChild(s);
+  });
+}
+
+async function startScan(onText){
+  stopScan();
+  scanning = true;
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    qrHint.textContent = 'Камера недоступна в этом режиме. Введите код вручную ниже.';
+    $('qrManualScan').open = true;
+    return;
+  }
+  let stream;
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+  }catch(e){
+    console.error(e);
+    qrHint.textContent = (e && e.name === 'NotFoundError')
+      ? 'Камера не найдена. Введите код вручную ниже.'
+      : 'Нет доступа к камере. Разрешите её в настройках браузера или введите код вручную ниже.';
+    $('qrManualScan').open = true;
+    return;
+  }
+  if(!scanning){ stream.getTracks().forEach(t => t.stop()); return; }
+  qrStream = stream;
+  qrVideo.srcObject = stream;
+  try{ await qrVideo.play(); }catch(e){ /* автозапуск мог быть заблокирован, кадры всё равно пойдут */ }
+
+  let detector = null;
+  if('BarcodeDetector' in window){
+    try{
+      const fmts = await BarcodeDetector.getSupportedFormats();
+      if(fmts.includes('qr_code')) detector = new BarcodeDetector({ formats: ['qr_code'] });
+    }catch(e){ /* нет — попробуем jsQR */ }
+  }
+  const jsq = detector ? null : await loadJsQR();
+  if(!scanning) return;
+  if(!detector && !jsq){
+    qrHint.textContent = 'Этот браузер не умеет читать QR сам. Введите код вручную ниже (или добавьте файл jsQR.js рядом с index.html).';
+    $('qrManualScan').open = true;
     return;
   }
 
-  const it = items.find(i => i.id === editingId);
-  if(it && (it.name !== name || it.place !== place)){
-    it.name = name;
-    it.place = place;
-    it.updatedAt = Date.now();
-    saveCache(); render(); scheduleSync();
-    showToast('Сохранено');
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const tick = async () => {
+    if(!scanning) return;
+    try{
+      if(qrVideo.readyState >= 2 && qrVideo.videoWidth){
+        let text = null;
+        if(detector){
+          const codes = await detector.detect(qrVideo);
+          if(codes.length) text = codes[0].rawValue;
+        }else{
+          const k = Math.min(1, 800 / Math.max(qrVideo.videoWidth, qrVideo.videoHeight));
+          canvas.width = Math.round(qrVideo.videoWidth * k);
+          canvas.height = Math.round(qrVideo.videoHeight * k);
+          ctx.drawImage(qrVideo, 0, 0, canvas.width, canvas.height);
+          const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const res = jsq(img.data, canvas.width, canvas.height, { inversionAttempts: 'dontInvert' });
+          if(res) text = res.data;
+        }
+        if(text && onText(text)) return;
+      }
+    }catch(e){ console.error(e); }
+    scanTimer = setTimeout(tick, 150);
+  };
+  tick();
+}
+
+/* --- шаги окна --- */
+function qrStep(step, title, hint){
+  $('qrChoose').hidden = step !== 'choose';
+  $('qrShow').hidden = step !== 'show';
+  $('qrScan').hidden = step !== 'scan';
+  qrTitle.textContent = title;
+  qrHint.textContent = hint || '';
+  qrNextBtn.hidden = true;
+  if(step === 'show'){            // не показываем и не даём скопировать код от прошлой попытки
+    $('qrCodeText').value = '';
+    $('qrCanvas').width = $('qrCanvas').height = 0;
   }
-  closeEdit();
+  if(step !== 'scan') stopScan();
 }
 
-function requestDelete(id){
-  const it = items.find(i => i.id === id);
-  if(!it) return;
-  pendingDeleteId = id;
-  deleteItemName.textContent = it.name;
-  deleteItemPlace.textContent = it.place;
-  deleteOverlay.classList.add('show');
+function closePeer(){
+  clearTimeout(connectTimer);
+  try{ if(dc) dc.close(); }catch(e){}
+  try{ if(pc) pc.close(); }catch(e){}
+  dc = null; pc = null; got = { items: false, done: false }; lastStats = null; assembling = {};
 }
 
-function confirmDelete(){
-  if(pendingDeleteId){
-    items = items.filter(it => it.id !== pendingDeleteId);
-    saveCache(); render(); scheduleSync();
-    showToast('Удалено');
+function errText(e){
+  const m = (e && e.message) || String(e);
+  if(m === 'no-candidates') return 'Не удалось определить адрес устройства в сети. Подключитесь к Wi-Fi (или включите точку доступа) и попробуйте снова.';
+  return 'Ошибка: ' + m;
+}
+function qrFail(msg){
+  closePeer();
+  qrStep('choose', 'Не получилось', msg + ' Нажмите кнопку ниже, чтобы начать заново.');
+}
+function armConnectTimer(ms, msg){
+  clearTimeout(connectTimer);
+  connectTimer = setTimeout(() => qrFail(msg || 'Устройства не смогли соединиться. Проверьте, что они в одной Wi-Fi сети (не гостевой) или на одном из них включена точка доступа.'), ms);
+}
+
+function openQr(){
+  stopScan(); closePeer();
+  overlay.classList.remove('show');
+  qrCloseBtn.textContent = 'Закрыть';
+  qrOverlay.classList.add('show');
+  qrStep('choose', 'Обмен по QR',
+    'Оба устройства должны быть в одной Wi-Fi сети (интернет не нужен) или на одном из них включена точка доступа. На первом нажмите «Показать код», на втором — «Сканировать код».');
+}
+function closeQr(){
+  stopScan(); closePeer();
+  qrOverlay.classList.remove('show');
+}
+
+function newPeer(){
+  closePeer();
+  pc = new RTCPeerConnection({ iceServers: [] });     // без STUN: нужна только локальная сеть
+  const mine = pc;
+  pc.onconnectionstatechange = () => {
+    if(pc === mine && mine.connectionState === 'failed') qrFail('Устройства не смогли соединиться. Проверьте, что они в одной Wi-Fi сети (не гостевой).');
+  };
+  pc.ondatachannel = e => setupDc(e.channel);
+}
+
+// Chrome и Safari прячут настоящий адрес за случайным именем вида xxxx.local, пока у страницы нет доступа к камере,
+// а такие имена находятся не в каждой сети. Камера нужна и для сканирования ответа, поэтому просим её заранее.
+async function primeCamera(){
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+  try{
+    const s = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    s.getTracks().forEach(t => t.stop());
+  }catch(e){ /* отказ или нет камеры: продолжаем с тем, что есть */ }
+}
+
+async function qrStart(){
+  try{
+    qrStep('show', 'Шаг 1 из 2: покажите код', 'Разрешите доступ к камере: она нужна, чтобы устройства нашли друг друга и чтобы отсканировать ответ.');
+    await primeCamera();
+    qrHint.textContent = 'Готовим код…';
+    newPeer();
+    setupDc(pc.createDataChannel('sync'));
+    await pc.setLocalDescription(await pc.createOffer());
+    await waitIce(pc);
+    const pl = sdpToPayload(pc.localDescription.sdp, 'o');
+    if(!pl.c.length) throw new Error('no-candidates');
+    showCode(pl);
+    if(!qrHint.textContent.startsWith('Не удалось')) qrHint.textContent = 'Наведите камеру второго устройства на этот код. Когда второе устройство покажет свой код, нажмите «Далее».';
+    qrNextBtn.textContent = 'Далее: сканировать ответ';
+    qrNextBtn.hidden = false;
+  }catch(e){ console.error(e); qrFail(errText(e)); }
+}
+
+function qrNext(){
+  qrExpect = 'a';
+  $('qrPasteText').value = '';
+  qrStep('scan', 'Шаг 2 из 2: сканируйте ответ', 'Наведите камеру на код на экране второго устройства.');
+  startScan(text => handleCode(text, 'a'));
+}
+
+function qrJoin(){
+  qrExpect = 'o';
+  $('qrPasteText').value = '';
+  qrStep('scan', 'Шаг 1 из 2: сканируйте код', 'Наведите камеру на код на экране первого устройства.');
+  startScan(text => handleCode(text, 'o'));
+}
+
+function handleCode(text, type){
+  const pl = parseCode(text);
+  if(!pl){ qrHint.textContent = 'Это не код «Где лежит». Попробуйте ещё раз.'; return false; }
+  if(pl.t !== type){
+    qrHint.textContent = type === 'o' ? 'Это ответный код. Нужен код первого устройства.' : 'Это код первого устройства. Нужен ответный код.';
+    return false;
   }
-  pendingDeleteId = null;
-  deleteOverlay.classList.remove('show');
+  stopScan();
+  if(type === 'o') answerOffer(pl); else acceptAnswer(pl);
+  return true;
 }
 
-/* ---- events ---- */
+async function answerOffer(pl){
+  try{
+    qrStep('show', 'Шаг 2 из 2: покажите ответ', 'Готовим ответный код…');
+    newPeer();
+    await pc.setRemoteDescription({ type: 'offer', sdp: buildSdp(pl) });
+    await pc.setLocalDescription(await pc.createAnswer());
+    await waitIce(pc);
+    const ans = sdpToPayload(pc.localDescription.sdp, 'a');
+    if(!ans.c.length) throw new Error('no-candidates');
+    showCode(ans);
+    if(!qrHint.textContent.startsWith('Не удалось')) qrHint.textContent = 'Покажите этот код первому устройству и нажмите на нём «Далее». Здесь ничего нажимать не нужно: ждём соединения.';
+    armConnectTimer(120000);
+  }catch(e){ console.error(e); qrFail(errText(e)); }
+}
+
+async function acceptAnswer(pl){
+  try{
+    qrStep('wait', 'Соединяем…', 'Секундочку.');
+    await pc.setRemoteDescription({ type: 'answer', sdp: buildSdp(pl) });
+    armConnectTimer(30000);
+  }catch(e){ console.error(e); qrFail(errText(e)); }
+}
+
+/* --- обмен данными --- */
+function setupDc(ch){
+  dc = ch;
+  ch.onopen = () => {
+    qrStep('wait', 'Соединено', 'Обмениваемся списками…');
+    armConnectTimer(30000, 'Соединение было, но обмен не завершился. Попробуйте ещё раз.');
+    sendObj({ t: 'items', items: items });
+  };
+  ch.onmessage = e => onChunk(e.data);
+}
+
+function sendObj(obj){
+  if(!dc || dc.readyState !== 'open') return;
+  const s = JSON.stringify(obj), SIZE = 12000, id = ++msgSeq;
+  const n = Math.max(1, Math.ceil(s.length / SIZE));
+  for(let i = 0; i < n; i++) dc.send(JSON.stringify({ id, i, n, d: s.slice(i * SIZE, (i + 1) * SIZE) }));
+}
+
+function onChunk(raw){
+  let m;
+  try{ m = JSON.parse(raw); }catch(e){ return; }
+  if(!m || typeof m.d !== 'string' || !Number.isInteger(m.i) || !Number.isInteger(m.n) || m.n < 1 || m.n > 400 || m.i < 0 || m.i >= m.n) return;
+  const a = assembling[m.id] || (assembling[m.id] = { n: m.n, parts: [], got: 0 });
+  if(a.parts[m.i] === undefined){ a.parts[m.i] = m.d; a.got++; }
+  if(a.got === a.n){
+    delete assembling[m.id];
+    let obj;
+    try{ obj = JSON.parse(a.parts.join('')); }catch(e){ return; }
+    onObj(obj);
+  }
+}
+
+function onObj(o){
+  if(!o || typeof o !== 'object') return;
+  if(o.t === 'items' && !got.items){
+    const r = applyRemote(o.items);
+    if(r) lastStats = { added: r.added, updated: r.updated, conflicts: r.conflicts.length };
+    got.items = true;
+    sendObj({ t: 'done' });
+  }else if(o.t === 'done'){
+    got.done = true;
+  }
+  if(got.items && got.done) finishQr();
+}
+
+function finishQr(){
+  clearTimeout(connectTimer);
+  const s = lastStats || { added: 0, updated: 0, conflicts: 0 };
+  qrStep('wait', 'Готово',
+    'Новых вещей: ' + s.added + '. Обновлено: ' + s.updated + '.' +
+    (s.conflicts ? ' Удалено на другом устройстве: ' + s.conflicts + ' — ответьте в появившемся окне.' : ''));
+  qrCloseBtn.textContent = 'Готово';
+  showToast('Синхронизировано');
+  scheduleSync();
+  setTimeout(closePeer, 500);
+}
+
+/* ===== события ===== */
 addBtn.addEventListener('click', addItem);
 [nameEl, placeEl].forEach(el => el.addEventListener('keydown', e => { if(e.key === 'Enter') addItem(); }));
 searchEl.addEventListener('input', render);
-searchEl.addEventListener('keydown', e => { if(e.key === 'Escape'){ searchEl.value=''; render(); searchEl.blur(); } });
+searchEl.addEventListener('keydown', e => { if(e.key === 'Escape'){ searchEl.value = ''; render(); searchEl.blur(); } });
+
 listEl.addEventListener('click', e => {
   const editBtn = e.target.closest('.edit');
   if(editBtn){ openEdit(editBtn.dataset.id); return; }
   const delBtn = e.target.closest('.del');
   if(delBtn) requestDelete(delBtn.dataset.id);
 });
+chipsEl.addEventListener('click', e => {
+  const chip = e.target.closest('.chip');
+  if(!chip) return;
+  ownerFilter = chip.dataset.owner;
+  lsSet('owner_filter', ownerFilter);
+  render();
+});
+
 editCancelBtn.addEventListener('click', closeEdit);
 editSaveBtn.addEventListener('click', saveEdit);
 [editName, editPlace].forEach(el => el.addEventListener('keydown', e => {
@@ -664,20 +1336,39 @@ editSaveBtn.addEventListener('click', saveEdit);
   if(e.key === 'Escape') closeEdit();
 }));
 editName.addEventListener('input', () => { editError.style.display = 'none'; });
+
 deleteCancelBtn.addEventListener('click', () => { pendingDeleteId = null; deleteOverlay.classList.remove('show'); });
 deleteConfirmBtn.addEventListener('click', confirmDelete);
 deleteOverlay.addEventListener('click', e => { if(e.target === deleteOverlay){ pendingDeleteId = null; deleteOverlay.classList.remove('show'); } });
+
+$('conflictKeepBtn').addEventListener('click', () => resolveConflict(false));
+$('conflictDeleteBtn').addEventListener('click', () => resolveConflict(true));
+
+profileSaveBtn.addEventListener('click', saveProfile);
+profileCancelBtn.addEventListener('click', () => profileOverlay.classList.remove('show'));
+profileInput.addEventListener('keydown', e => { if(e.key === 'Enter') saveProfile(); });
+
 document.addEventListener('keydown', e => {
-  if(e.key === '/' && ![searchEl,nameEl,placeEl].includes(document.activeElement)){ e.preventDefault(); searchEl.focus(); }
+  if(e.key === '/' && ![searchEl, nameEl, placeEl].includes(document.activeElement) && !document.querySelector('.overlay.show')){
+    e.preventDefault(); searchEl.focus();
+  }
 });
 
 statusBtn.addEventListener('click', () => {
   tokenInput.value = token;
   gistIdInput.value = gistId;
+  $('settingsName').value = profile;
   if(gistId){ gistIdDisplay.style.display = 'flex'; gistIdValue.textContent = gistId; } else { gistIdDisplay.style.display = 'none'; }
   overlay.classList.add('show');
 });
 cancelBtn.addEventListener('click', () => overlay.classList.remove('show'));
+$('saveNameBtn').addEventListener('click', () => {
+  const name = $('settingsName').value.trim();
+  if(!name){ $('settingsName').focus(); return; }
+  profileInput.value = name;
+  saveProfile();
+  showToast('Имя сохранено');
+});
 
 connectBtn.addEventListener('click', async () => {
   const t = tokenInput.value.trim();
@@ -691,21 +1382,37 @@ connectBtn.addEventListener('click', async () => {
       showToast('Gist создан');
     }
     token = t; gistId = g;
-    localStorage.setItem('gh_token', token);
-    localStorage.setItem('gist_id', gistId);
+    lsSet('gh_token', token);
+    lsSet('gist_id', gistId);
     gistIdDisplay.style.display = 'flex';
     gistIdValue.textContent = gistId;
-    await pullFromGist();
+    await syncGist();
     overlay.classList.remove('show');
   }catch(e){
     console.error(e);
-    showToast('Не получилось подключиться — проверь токен');
+    showToast('Не получилось подключиться — проверьте токен');
   }
   connectBtn.disabled = false;
   connectBtn.textContent = 'Подключить';
 });
 
-/* ---- theme ---- */
+$('qrBtn').addEventListener('click', openQr);
+$('openQrBtn').addEventListener('click', openQr);
+$('qrStartBtn').addEventListener('click', qrStart);
+$('qrJoinBtn').addEventListener('click', qrJoin);
+qrNextBtn.addEventListener('click', qrNext);
+qrCloseBtn.addEventListener('click', closeQr);
+$('qrPasteBtn').addEventListener('click', () => {
+  if(!qrExpect) return;
+  handleCode($('qrPasteText').value, qrExpect);
+});
+$('qrCopyBtn').addEventListener('click', async () => {
+  const ta = $('qrCodeText');
+  try{ await navigator.clipboard.writeText(ta.value); showToast('Скопировано'); }
+  catch(e){ ta.select(); try{ document.execCommand('copy'); showToast('Скопировано'); }catch(e2){} }
+});
+
+/* ===== тема ===== */
 function applyTheme(theme){
   const metaTheme = document.querySelector('meta[name="theme-color"]');
   if(theme === 'light'){
@@ -725,17 +1432,16 @@ function applyTheme(theme){
 function toggleTheme(){
   const current = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
   const next = current === 'light' ? 'dark' : 'light';
-  localStorage.setItem('theme', next);
+  lsSet('theme', next);
   applyTheme(next);
 }
 themeToggle.addEventListener('click', toggleTheme);
-applyTheme(localStorage.getItem('theme') === 'light' ? 'light' : 'dark');
+applyTheme(lsGet('theme') === 'light' ? 'light' : 'dark');
 
-/* ---- font size ---- */
+/* ===== размер шрифта ===== */
 const FONT_MIN = 90, FONT_MAX = 170, FONT_STEP = 10;
-let fontScale = parseInt(localStorage.getItem('font_scale'), 10);
+let fontScale = parseInt(lsGet('font_scale'), 10);
 if(isNaN(fontScale)) fontScale = 100;
-
 function applyFontScale(){
   document.documentElement.style.fontSize = fontScale + '%';
   fontMinus.disabled = fontScale <= FONT_MIN;
@@ -743,14 +1449,14 @@ function applyFontScale(){
 }
 function changeFontScale(delta){
   fontScale = Math.min(FONT_MAX, Math.max(FONT_MIN, fontScale + delta));
-  localStorage.setItem('font_scale', fontScale);
+  lsSet('font_scale', fontScale);
   applyFontScale();
 }
 fontMinus.addEventListener('click', () => changeFontScale(-FONT_STEP));
 fontPlus.addEventListener('click', () => changeFontScale(FONT_STEP));
 applyFontScale();
 
-/* ---- persistent storage ---- */
+/* ===== persistent storage ===== */
 if('storage' in navigator && 'persist' in navigator.storage){
   navigator.storage.persisted().then(isPersisted => {
     if(!isPersisted){
@@ -761,9 +1467,9 @@ if('storage' in navigator && 'persist' in navigator.storage){
   });
 }
 
-/* ---- service worker + фоновые обновления ---- */
-const updateBar = document.getElementById('updateBar');
-document.getElementById('updateBtn').addEventListener('click', () => location.reload());
+/* ===== service worker + фоновые обновления ===== */
+const updateBar = $('updateBar');
+$('updateBtn').addEventListener('click', () => location.reload());
 
 if('serviceWorker' in navigator){
   navigator.serviceWorker.addEventListener('message', e => {
@@ -787,9 +1493,19 @@ if('serviceWorker' in navigator){
   });
 }
 
-/* ---- init ---- */
+document.addEventListener('visibilitychange', () => {
+  if(document.visibilityState === 'visible' && token && gistId) syncGist();
+});
+window.addEventListener('online', () => { if(token && gistId) syncGist(); });
+
+/* ===== запуск ===== */
 loadCache();
-pullFromGist();
+loadPending();
+render();
+if(!profile) openProfile(true);
+showNextPending();
+syncGist();
+
 </script>
 </body>
 </html>

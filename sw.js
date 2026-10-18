@@ -3,13 +3,14 @@
 // а в фоне подтягивается свежая версия. Если файл изменился —
 // страница получает сообщение UPDATE_READY и показывает плашку «Обновить».
 // CACHE_VERSION меняй только если поменялся список файлов в APP_SHELL.
-const CACHE_VERSION = 'v2';
+const CACHE_VERSION = 'v3';
 const CACHE_NAME = 'gde-lezhit-' + CACHE_VERSION;
 
 const APP_SHELL = [
   './',
   './index.html',
   './manifest.json',
+  './qrcode.js',
   './icon-192.png',
   './icon-512.png',
   './apple-touch-icon.png',
@@ -17,6 +18,10 @@ const APP_SHELL = [
   './favicon-16.png',
   './favicon.ico'
 ];
+
+// Необязательные файлы: кешируем, если они лежат рядом, а если их нет, установка не ломается.
+// jsQR.js нужен только браузерам без встроенного BarcodeDetector (Safari, Firefox).
+const OPTIONAL = ['./jsQR.js'];
 
 const SCOPE = self.registration.scope;
 const DOC_KEYS = [SCOPE, SCOPE + 'index.html'];
@@ -76,6 +81,12 @@ self.addEventListener('install', event => {
       const res = await fetch(new Request(path, { cache: 'reload' }));
       if (!res.ok) throw new Error(path + ' ' + res.status);
       await cache.put(path, res);
+    }));
+    await Promise.all(OPTIONAL.map(async path => {
+      try {
+        const res = await fetch(new Request(path, { cache: 'reload' }));
+        if (res.ok) await cache.put(path, res);
+      } catch (e) { /* файла нет: не страшно */ }
     }));
     await self.skipWaiting();
   })());
