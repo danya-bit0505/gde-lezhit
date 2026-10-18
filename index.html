@@ -340,6 +340,14 @@
   .tech-info{ font-size: 0.75rem; color: var(--muted); overflow-wrap: anywhere; }
   .tech-info b{ color: var(--text); }
   .tech-info.weak, .tech-info.weak b{ color: var(--danger); }
+  .tech-info + .tech-info{ margin-top: 6px; }
+  .peer-list{ margin-top: 12px; }
+  .peer{ display: flex; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px dashed var(--line); font-size: 0.8125rem; }
+  .peer-name{ flex: 1; min-width: 0; overflow-wrap: anywhere; font-weight: 700; }
+  .peer-meta{ color: var(--muted); font-size: 0.6875rem; white-space: nowrap; }
+  .peer-forget{ background: none; border: 1px solid var(--line); color: var(--muted); font-family: inherit; font-size: 0.6875rem; padding: 0.35em 0.8em; border-radius: 3px; cursor: pointer; }
+  .peer-forget:hover{ color: var(--danger); border-color: var(--danger); }
+  #qrConfirm button{ padding: 1rem; font-size: 0.875rem; }
 </style>
 </head>
 <body>
@@ -394,6 +402,7 @@
     <h2 class="sep-h">Обмен по QR</h2>
     <p>Синхронизация между устройствами рядом, без интернета.</p>
     <div class="row"><button class="primary" id="openQrBtn">Открыть обмен по QR</button></div>
+    <div id="peerList" class="peer-list"></div>
 
     <h2 class="sep-h">GitHub Gist</h2>
     <p>Данные хранятся в приватном GitHub Gist. Один раз настройте на каждом устройстве: токен и ID gist'а нужны одинаковые, чтобы устройства видели одни и те же вещи.</p>
@@ -412,6 +421,7 @@
 
     <h2 class="sep-h">Об устройстве</h2>
     <p class="tech-info" id="idGenInfo"></p>
+    <p class="tech-info" id="keyInfo">Ключ устройства: проверяем…</p>
 
     <div class="row">
       <button class="ghost" id="cancelBtn">Закрыть</button>
@@ -448,7 +458,12 @@
       </details>
     </div>
 
-    <div class="row">
+    <div class="row" id="qrConfirm" hidden>
+      <button class="danger-btn" id="qrRejectBtn">Отклонить</button>
+      <button class="primary" id="qrAcceptBtn">Принять</button>
+    </div>
+
+    <div class="row" id="qrMainRow">
       <button class="ghost" id="qrCloseBtn">Закрыть</button>
       <button class="primary" id="qrNextBtn" hidden></button>
     </div>
@@ -973,6 +988,8 @@ async function createGist(){
 /* ===== обмен по QR (WebRTC без сервера и без интернета) ===== */
 let pc = null, dc = null, qrExpect = null, qrStream = null, scanTimer = null, scanning = false;
 let connectTimer = null, got = { items: false, done: false }, lastStats = null, msgSeq = 0, assembling = {};
+let role = null, basePc = null, extraPcs = [], qrSeq = 0;      // role: 'show' — показываем код, 'scan' — сканируем
+let remoteFp = null, remoteName = '', helloGot = false, accepted = false, decided = false;
 const qrOverlay = $('qrOverlay'), qrTitle = $('qrTitle'), qrHint = $('qrHint');
 const qrNextBtn = $('qrNextBtn'), qrCloseBtn = $('qrCloseBtn'), qrVideo = $('qrVideo');
 
@@ -994,14 +1011,21 @@ function sdpToPayload(sdp, type){
   const fp = g(/a=fingerprint:sha-256 (\S+)/i);
   const s = SETUP_TO_CHAR[g(/a=setup:(\S+)/)];
   if(!u || !p || !fp || !s) throw new Error('неожиданный формат SDP');
+  return { v: 1, t: type, u, p, f: fpToB64(fp), s, c: hostCands(sdp) };
+}
+
+function hostCands(sdp){
   const all = [], re = /a=candidate:\S+ 1 udp \d+ (\S+) (\d+) typ host/g;
   let m;
   while((m = re.exec(sdp))) all.push([m[1], +m[2]]);
   const v4 = all.filter(c => !c[0].includes(':'));
   const v6 = all.filter(c => c[0].includes(':') && !/^fe80/i.test(c[0]));
-  const cands = (v4.length ? v4 : v6).slice(0, 3);
-  return { v: 1, t: type, u, p, f: fpToB64(fp), s, c: cands };
+  return (v4.length ? v4 : v6).slice(0, 3);
 }
+
+const validCands = (a, max) => Array.isArray(a) && a.length >= 1 && a.length <= max && a.every(c =>
+  Array.isArray(c) && typeof c[0] === 'string' && /^[A-Za-z0-9.:\-]{1,80}$/.test(c[0]) &&
+  Number.isInteger(c[1]) && c[1] >= 1 && c[1] <= 65535);
 
 function parseCode(text){
   let o;
@@ -1011,26 +1035,32 @@ function parseCode(text){
   if(typeof o.p !== 'string' || !/^[A-Za-z0-9+\/]{8,128}$/.test(o.p)) return null;
   if(typeof o.f !== 'string' || !/^[A-Za-z0-9+\/]{43}$/.test(o.f)) return null;
   if(!CHAR_TO_SETUP[o.s]) return null;
-  if(!Array.isArray(o.c) || !o.c.length || o.c.length > 6) return null;
-  for(const c of o.c){
-    if(!Array.isArray(c) || typeof c[0] !== 'string' || !/^[A-Za-z0-9.:\-]{1,80}$/.test(c[0])) return null;
-    if(!Number.isInteger(c[1]) || c[1] < 1 || c[1] > 65535) return null;
+  if(!validCands(o.c, 6)) return null;
+  // необязательное: для знакомых устройств — продиктованный пароль и их адреса первого устройства
+  if(o.d !== undefined || o.k !== undefined){
+    const okD = Array.isArray(o.d) && o.d.length === 2 &&
+      typeof o.d[0] === 'string' && /^[A-Za-z0-9+\/]{4,32}$/.test(o.d[0]) &&
+      typeof o.d[1] === 'string' && /^[A-Za-z0-9+\/]{22,128}$/.test(o.d[1]);
+    const okK = Array.isArray(o.k) && o.k.length >= 1 && o.k.length <= 8 && o.k.every(e =>
+      Array.isArray(e) && typeof e[0] === 'string' && /^[A-Za-z0-9+\/]{8}$/.test(e[0]) && validCands(e[1], 3));
+    if(!okD || !okK || o.t !== 'o'){ delete o.d; delete o.k; }
   }
   return o;
 }
 
-function buildSdp(pl){
+function buildSdp(pl, opt){
+  const mid = opt && opt.mid && /^[A-Za-z0-9_\-]{1,32}$/.test(opt.mid) ? opt.mid : '0';
   const lines = [
     'v=0', 'o=- 1 2 IN IP4 127.0.0.1', 's=-', 't=0 0',
-    'a=group:BUNDLE 0', 'a=msid-semantic: WMS',
+    'a=group:BUNDLE ' + mid, 'a=msid-semantic: WMS',
     'm=application 9 UDP/DTLS/SCTP webrtc-datachannel', 'c=IN IP4 0.0.0.0',
     'a=ice-ufrag:' + pl.u, 'a=ice-pwd:' + pl.p,
     'a=fingerprint:sha-256 ' + b64ToFp(pl.f),
     'a=setup:' + CHAR_TO_SETUP[pl.s],
-    'a=mid:0', 'a=sctp-port:5000', 'a=max-message-size:262144'
+    'a=mid:' + mid, 'a=sctp-port:5000', 'a=max-message-size:262144'
   ];
   pl.c.forEach((c, i) => lines.push(`a=candidate:${i + 1} 1 udp ${2122260223 - i} ${c[0]} ${c[1]} typ host`));
-  lines.push('a=end-of-candidates');
+  if(!(opt && opt.noEnd)) lines.push('a=end-of-candidates');   // без кандидатов ждём «стука» второго устройства
   return lines.join('\r\n') + '\r\n';
 }
 
@@ -1157,11 +1187,121 @@ async function startScan(onText){
   tick();
 }
 
+/* --- ключ устройства и знакомые устройства ---
+   Постоянный сертификат DTLS лежит в IndexedDB, его отпечаток — «паспорт» устройства.
+   Устройства, которые уже обменивались, помнят отпечатки друг друга. Тогда первому устройству
+   не нужен ответный код: ответ второго оно собирает само (отпечаток знает, пароль соединения
+   продиктовало в своём QR, адрес узнаёт, когда второе постучится). Хватает одного сканирования. */
+const CERT_DAYS = 365, PEERS_MAX = 20, PEERS_IN_QR = 5;
+const B64_FP = /^[A-Za-z0-9+\/]{43}$/;
+let devCert = null, devFp = null, devKeyState = 'none';   // 'persist' | 'temp' | 'none'
+
+function idbKeys(){
+  return new Promise((res, rej) => {
+    const q = indexedDB.open('gde-lezhit-keys', 1);
+    q.onupgradeneeded = () => q.result.createObjectStore('k');
+    q.onsuccess = () => res(q.result);
+    q.onerror = () => rej(q.error);
+  });
+}
+const idbReq = r => new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+
+async function certFingerprint(cert){
+  const p = new RTCPeerConnection({ iceServers: [], certificates: [cert] });
+  try{
+    p.createDataChannel('x');
+    const m = (await p.createOffer()).sdp.match(/a=fingerprint:sha-256 (\S+)/i);
+    return m ? fpToB64(m[1]) : null;
+  }finally{ p.close(); }
+}
+
+async function loadDeviceKey(){
+  if(typeof RTCPeerConnection === 'undefined' || !RTCPeerConnection.generateCertificate){ renderKeyInfo(); return; }
+  const gen = days => RTCPeerConnection.generateCertificate(Object.assign({ name: 'ECDSA', namedCurve: 'P-256' }, days ? { expires: days * 864e5 } : {}));
+  try{
+    const db = await idbKeys();
+    let c = await idbReq(db.transaction('k').objectStore('k').get('cert'));
+    if(!(c && c.expires - Date.now() > 7 * 864e5)){        // нет, испорчен или скоро истечёт — новый
+      c = await gen(CERT_DAYS);
+      const tx = db.transaction('k', 'readwrite');
+      tx.objectStore('k').put(c, 'cert');
+      await new Promise((res, rej) => { tx.oncomplete = res; tx.onerror = () => rej(tx.error); tx.onabort = () => rej(tx.error); });
+    }
+    devCert = c; devKeyState = 'persist';
+  }catch(e){
+    console.warn('Ключ устройства не сохраняется, будет временный:', e);
+    try{ devCert = await gen(0); devKeyState = 'temp'; }catch(e2){ devCert = null; }
+  }
+  if(devCert){ try{ devFp = await certFingerprint(devCert); }catch(e){ devFp = null; } }
+  if(!devFp){ devCert = null; devKeyState = 'none'; }
+  renderKeyInfo();
+}
+
+function renderKeyInfo(){
+  const el = $('keyInfo');
+  if(!el) return;
+  el.classList.toggle('weak', devKeyState !== 'persist');
+  if(devKeyState === 'persist')
+    el.textContent = 'Ключ устройства: постоянный, действует до ' + new Date(devCert.expires).toLocaleDateString('ru-RU') + ' (отпечаток ' + devFp.slice(0, 8) + ')';
+  else if(devKeyState === 'temp')
+    el.textContent = 'Ключ устройства: временный — браузер не дал его сохранить, поэтому каждый обмен по QR будет в два сканирования';
+  else
+    el.textContent = 'Ключ устройства: недоступен — обмен по QR в этом браузере не работает';
+}
+
+const cleanName = n => String(n == null ? '' : n).replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 40);
+function loadPeers(){
+  try{
+    const a = JSON.parse(lsGet('qr_peers') || '[]');
+    return (Array.isArray(a) ? a : [])
+      .filter(p => p && typeof p.f === 'string' && B64_FP.test(p.f))
+      .map(p => ({ f: p.f, name: cleanName(p.name), last: Number(p.last) || 0 }));
+  }catch(e){ return []; }
+}
+const knownPeer = f => loadPeers().find(p => p.f === f) || null;
+const peerTag = f => f.slice(0, 8);
+function rememberPeer(f, name){
+  if(!f || !B64_FP.test(f) || f === devFp) return;
+  const list = loadPeers().filter(p => p.f !== f);
+  list.unshift({ f, name: cleanName(name), last: Date.now() });
+  lsSet('qr_peers', JSON.stringify(list.slice(0, PEERS_MAX)));
+  renderPeers();
+}
+function forgetPeer(f){
+  lsSet('qr_peers', JSON.stringify(loadPeers().filter(p => p.f !== f)));
+  renderPeers();
+}
+function renderPeers(){
+  const el = $('peerList');
+  if(!el) return;
+  const list = loadPeers();
+  if(!list.length){
+    el.innerHTML = '<p class="tech-info">Знакомых устройств пока нет. С новым устройством первый обмен — в два сканирования, дальше хватит одного.</p>';
+    return;
+  }
+  el.innerHTML = '<p class="tech-info">Знакомые устройства — им хватает одного сканирования:</p>' + list.map(p =>
+    `<div class="peer"><span class="peer-name">${escapeHtml(p.name || 'Без имени')}</span>` +
+    `<span class="peer-meta">${escapeHtml(timeAgo(p.last))}</span>` +
+    `<button class="peer-forget" data-f="${escapeHtml(p.f)}">Забыть</button></div>`).join('');
+}
+
+function randToken(n){
+  const abc = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let b;
+  try{ b = crypto.getRandomValues(new Uint8Array(n)); }
+  catch(e){ b = Array.from({ length: n }, () => Math.floor(Math.random() * 256)); }
+  return Array.from(b, x => abc[x % abc.length]).join('');
+}
+
+const keyReady = loadDeviceKey().catch(e => { console.error(e); renderKeyInfo(); });
+
 /* --- шаги окна --- */
 function qrStep(step, title, hint){
   $('qrChoose').hidden = step !== 'choose';
   $('qrShow').hidden = step !== 'show';
   $('qrScan').hidden = step !== 'scan';
+  $('qrConfirm').hidden = step !== 'confirm';
+  $('qrMainRow').hidden = step === 'confirm';
   qrTitle.textContent = title;
   qrHint.textContent = hint || '';
   qrNextBtn.hidden = true;
@@ -1172,11 +1312,16 @@ function qrStep(step, title, hint){
   if(step !== 'scan') stopScan();
 }
 
-function closePeer(){
+function resetPeerState(){
   clearTimeout(connectTimer);
-  try{ if(dc) dc.close(); }catch(e){}
-  try{ if(pc) pc.close(); }catch(e){}
-  dc = null; pc = null; got = { items: false, done: false }; lastStats = null; assembling = {};
+  dc = null; pc = null; basePc = null; extraPcs = [];
+  got = { items: false, done: false }; lastStats = null; assembling = {};
+  remoteFp = null; remoteName = ''; helloGot = false; accepted = false; decided = false;
+}
+function closePeer(){
+  const all = [dc, pc, basePc, ...extraPcs];
+  resetPeerState();
+  for(const x of all){ try{ if(x) x.close(); }catch(e){} }
 }
 
 function errText(e){
@@ -1185,6 +1330,7 @@ function errText(e){
   return 'Ошибка: ' + m;
 }
 function qrFail(msg){
+  qrSeq++;                        // всё, что ещё ждёт в фоне от этой попытки, — отменяется
   closePeer();
   qrStep('choose', 'Не получилось', msg + ' Нажмите кнопку ниже, чтобы начать заново.');
 }
@@ -1193,27 +1339,37 @@ function armConnectTimer(ms, msg){
   connectTimer = setTimeout(() => qrFail(msg || 'Устройства не смогли соединиться. Проверьте, что они в одной Wi-Fi сети (не гостевой) или на одном из них включена точка доступа.'), ms);
 }
 
+function clearCodes(){ $('qrCodeText').value = ''; $('qrPasteText').value = ''; $('qrCanvas').width = $('qrCanvas').height = 0; }
 function openQr(){
+  qrSeq++;
+  clearCodes();
   stopScan(); closePeer();
   overlay.classList.remove('show');
   qrCloseBtn.textContent = 'Закрыть';
   qrOverlay.classList.add('show');
   qrStep('choose', 'Обмен по QR',
-    'Оба устройства должны быть в одной Wi-Fi сети (интернет не нужен) или на одном из них включена точка доступа. На первом нажмите «Показать код», на втором — «Сканировать код».');
+    'Оба устройства должны быть в одной Wi-Fi сети (интернет не нужен) или на одном из них включена точка доступа. На первом нажмите «Показать код», на втором — «Сканировать код». Знакомым устройствам хватает одного сканирования.');
 }
 function closeQr(){
+  qrSeq++;
+  clearCodes();
   stopScan(); closePeer();
   qrOverlay.classList.remove('show');
 }
 
-function newPeer(){
+function makePc(){
+  const cfg = { iceServers: [] };                     // без STUN: нужна только локальная сеть
+  if(devCert) cfg.certificates = [devCert];
+  return new RTCPeerConnection(cfg);
+}
+function newPeer(quiet){
   closePeer();
-  pc = new RTCPeerConnection({ iceServers: [] });     // без STUN: нужна только локальная сеть
+  pc = basePc = makePc();
   const mine = pc;
-  pc.onconnectionstatechange = () => {
+  if(!quiet) pc.onconnectionstatechange = () => {
     if(pc === mine && mine.connectionState === 'failed') qrFail('Устройства не смогли соединиться. Проверьте, что они в одной Wi-Fi сети (не гостевой).');
   };
-  pc.ondatachannel = e => setupDc(e.channel);
+  pc.ondatachannel = e => setupDc(e.channel, mine, null);
 }
 
 // Chrome и Safari прячут настоящий адрес за случайным именем вида xxxx.local, пока у страницы нет доступа к камере,
@@ -1226,22 +1382,68 @@ async function primeCamera(){
   }catch(e){ /* отказ или нет камеры: продолжаем с тем, что есть */ }
 }
 
-async function qrStart(){
+// Для каждого знакомого устройства — своё соединение, ответ которого первое устройство собирает само.
+// Пароль соединения у всех общий с основным (чтобы не раздувать QR), продиктованный пароль второго — тоже общий.
+async function prepareFast(base){
+  const peers = devCert && devKeyState !== 'none' ? loadPeers().slice(0, PEERS_IN_QR) : [];
+  if(!peers.length) return { list: [], creds: null };
+  const sdp0 = base.localDescription.sdp;
+  const u = sdp0.match(/a=ice-ufrag:(\S+)/)[1], p = sdp0.match(/a=ice-pwd:(\S+)/)[1];
+  const creds = [randToken(8), randToken(24)];
+  const list = [], made = [];
   try{
-    qrStep('show', 'Шаг 1 из 2: покажите код', 'Разрешите доступ к камере: она нужна, чтобы устройства нашли друг друга и чтобы отсканировать ответ.');
+    for(const peer of peers){
+      const conn = makePc();
+      made.push(conn); extraPcs.push(conn);
+      setupDc(conn.createDataChannel('sync'), conn, peer.f);
+      const offer = (await conn.createOffer()).sdp
+        .replace(/a=ice-ufrag:\S+/g, 'a=ice-ufrag:' + u)
+        .replace(/a=ice-pwd:\S+/g, 'a=ice-pwd:' + p);
+      await conn.setLocalDescription({ type: 'offer', sdp: offer });
+      const mid = (offer.match(/a=mid:(\S+)/) || [0, '0'])[1];
+      await conn.setRemoteDescription({ type: 'answer',
+        sdp: buildSdp({ u: creds[0], p: creds[1], f: peer.f, s: 'c', c: [] }, { mid, noEnd: true }) });
+      list.push({ pc: conn, peer });
+    }
+  }catch(e){
+    console.warn('Обмен по одному коду в этом браузере недоступен, будет два сканирования:', e);
+    for(const x of made){ try{ x.close(); }catch(e2){} }
+    extraPcs = extraPcs.filter(x => !made.includes(x));
+    return { list: [], creds: null };
+  }
+  return { list, creds };
+}
+
+async function qrStart(){
+  const my = ++qrSeq;
+  role = 'show';
+  try{
+    qrStep('show', 'Покажите код', 'Разрешите доступ к камере: она нужна, чтобы устройства нашли друг друга и чтобы отсканировать ответ.');
     await primeCamera();
+    await keyReady;
+    if(my !== qrSeq) return;
     qrHint.textContent = 'Готовим код…';
     newPeer();
-    setupDc(pc.createDataChannel('sync'));
-    await pc.setLocalDescription(await pc.createOffer());
-    await waitIce(pc);
-    const pl = sdpToPayload(pc.localDescription.sdp, 'o');
+    const base = pc;
+    setupDc(base.createDataChannel('sync'), base, null);
+    await base.setLocalDescription(await base.createOffer());
+    const fast = await prepareFast(base);
+    await Promise.all([waitIce(base), ...fast.list.map(f => waitIce(f.pc))]);
+    if(my !== qrSeq || basePc !== base) return;
+    const pl = sdpToPayload(base.localDescription.sdp, 'o');
     if(!pl.c.length) throw new Error('no-candidates');
+    const k = [];
+    for(const f of fast.list){
+      const c = hostCands(f.pc.localDescription.sdp).slice(0, 2);
+      if(c.length) k.push([peerTag(f.peer.f), c]);
+    }
+    if(k.length){ pl.d = fast.creds; pl.k = k; }
     showCode(pl);
-    if(!qrHint.textContent.startsWith('Не удалось')) qrHint.textContent = 'Наведите камеру второго устройства на этот код. Когда второе устройство покажет свой код, нажмите «Далее».';
+    if(!qrHint.textContent.startsWith('Не удалось'))
+      qrHint.textContent = 'Отсканируйте этот код вторым устройством. Знакомое устройство подключится сразу — здесь появится вопрос. Если второе покажет свой код, нажмите «Далее».';
     qrNextBtn.textContent = 'Далее: сканировать ответ';
     qrNextBtn.hidden = false;
-  }catch(e){ console.error(e); qrFail(errText(e)); }
+  }catch(e){ console.error(e); if(my === qrSeq) qrFail(errText(e)); }
 }
 
 function qrNext(){
@@ -1252,9 +1454,11 @@ function qrNext(){
 }
 
 function qrJoin(){
+  qrSeq++;
+  role = 'scan';
   qrExpect = 'o';
   $('qrPasteText').value = '';
-  qrStep('scan', 'Шаг 1 из 2: сканируйте код', 'Наведите камеру на код на экране первого устройства.');
+  qrStep('scan', 'Сканируйте код', 'Наведите камеру на код на экране первого устройства.');
   startScan(text => handleCode(text, 'o'));
 }
 
@@ -1270,38 +1474,127 @@ function handleCode(text, type){
   return true;
 }
 
-async function answerOffer(pl){
+// Второе устройство знакомо первому: отвечаем с продиктованным паролем, ответный код не нужен.
+async function tryFast(pl, cands, my){
   try{
+    newPeer(true);
+    const conn = pc;
+    remoteFp = pl.f;
+    await conn.setRemoteDescription({ type: 'offer', sdp: buildSdp(Object.assign({}, pl, { c: cands })) });
+    const sdp = (await conn.createAnswer()).sdp
+      .replace(/a=ice-ufrag:\S+/g, 'a=ice-ufrag:' + pl.d[0])
+      .replace(/a=ice-pwd:\S+/g, 'a=ice-pwd:' + pl.d[1])
+      .replace(/a=setup:\S+/g, 'a=setup:active');
+    await conn.setLocalDescription({ type: 'answer', sdp });
+    const t0 = Date.now();
+    while(Date.now() - t0 < 8000){
+      if(my !== qrSeq) return 'abort';
+      if(conn._opened) return 'ok';
+      if(conn.connectionState === 'failed' || conn.connectionState === 'closed') break;
+      await new Promise(r => setTimeout(r, 100));
+    }
+  }catch(e){ console.warn('Обмен по одному коду не удался:', e); }
+  if(my !== qrSeq) return 'abort';
+  closePeer();
+  return 'fail';
+}
+
+async function answerOffer(pl){
+  const my = qrSeq;
+  try{
+    await keyReady;
+    if(my !== qrSeq) return;
+    const mine = devFp && pl.d && pl.k ? pl.k.find(e => e[0] === peerTag(devFp)) : null;
+    if(mine){
+      qrStep('wait', 'Подключаемся…', 'Первое устройство вас знает — хватит одного кода.');
+      const r = await tryFast(pl, mine[1], my);
+      if(r !== 'fail') return;
+    }
     qrStep('show', 'Шаг 2 из 2: покажите ответ', 'Готовим ответный код…');
     newPeer();
-    await pc.setRemoteDescription({ type: 'offer', sdp: buildSdp(pl) });
-    await pc.setLocalDescription(await pc.createAnswer());
-    await waitIce(pc);
-    const ans = sdpToPayload(pc.localDescription.sdp, 'a');
+    const conn = pc;
+    remoteFp = pl.f;
+    await conn.setRemoteDescription({ type: 'offer', sdp: buildSdp(pl) });
+    await conn.setLocalDescription(await conn.createAnswer());
+    await waitIce(conn);
+    if(my !== qrSeq || pc !== conn) return;
+    const ans = sdpToPayload(conn.localDescription.sdp, 'a');
     if(!ans.c.length) throw new Error('no-candidates');
     showCode(ans);
-    if(!qrHint.textContent.startsWith('Не удалось')) qrHint.textContent = 'Покажите этот код первому устройству и нажмите на нём «Далее». Здесь ничего нажимать не нужно: ждём соединения.';
+    if(!qrHint.textContent.startsWith('Не удалось'))
+      qrHint.textContent = (mine ? 'Сразу соединиться не вышло. ' : '') + 'Покажите этот код первому устройству: там нажмите «Далее» и наведите камеру. Здесь ничего нажимать не нужно: ждём соединения.';
     armConnectTimer(120000);
-  }catch(e){ console.error(e); qrFail(errText(e)); }
+  }catch(e){ console.error(e); if(my === qrSeq) qrFail(errText(e)); }
 }
 
 async function acceptAnswer(pl){
   try{
     qrStep('wait', 'Соединяем…', 'Секундочку.');
-    await pc.setRemoteDescription({ type: 'answer', sdp: buildSdp(pl) });
+    const base = basePc;
+    if(!base) throw new Error('соединение уже закрыто');
+    for(const x of extraPcs) if(x !== base){ try{ x.close(); }catch(e){} }   // знакомые пути больше не нужны
+    extraPcs = [];
+    remoteFp = pl.f;
+    await base.setRemoteDescription({ type: 'answer', sdp: buildSdp(pl) });
     armConnectTimer(30000);
   }catch(e){ console.error(e); qrFail(errText(e)); }
 }
 
-/* --- обмен данными --- */
-function setupDc(ch){
-  dc = ch;
-  ch.onopen = () => {
-    qrStep('wait', 'Соединено', 'Обмениваемся списками…');
-    armConnectTimer(30000, 'Соединение было, но обмен не завершился. Попробуйте ещё раз.');
-    sendObj({ t: 'items', items: items });
+/* --- обмен данными ---
+   hello (оба) → первое устройство спрашивает «Принять / Отклонить» →
+   ok + items (первое) → items (второе) → done (оба). До «Принять» никто ничего не получает. */
+function setupDc(ch, conn, fp){
+  let did = false;
+  const opened = () => {
+    if(did) return;
+    did = true;
+    if(dc && dc !== ch){ try{ conn.close(); }catch(e){} return; }   // уже соединились по другому пути
+    dc = ch; pc = conn; conn._opened = true;
+    if(fp) remoteFp = fp;
+    for(const x of [basePc, ...extraPcs]) if(x && x !== conn){ try{ x.close(); }catch(e){} }
+    basePc = conn; extraPcs = [];
+    stopScan();
+    if(role === 'show'){
+      qrStep('wait', 'Соединено', 'Узнаём, кто подключился…');
+      armConnectTimer(15000, 'Второе устройство подключилось, но не представилось. Обновите приложение на обоих устройствах и попробуйте ещё раз.');
+    }else{
+      qrStep('wait', 'Соединено', 'Ждём подтверждения на первом устройстве…');
+      armConnectTimer(180000, 'Первое устройство так и не подтвердило обмен.');
+    }
+    sendObj({ t: 'hello', name: profile, n: items.filter(i => !i.deleted).length });
   };
-  ch.onmessage = e => onChunk(e.data);
+  ch.onopen = opened;
+  if(ch.readyState === 'open') Promise.resolve().then(opened);
+  // сообщение может прийти раньше события open — тогда сообщение само доказывает, что канал открыт
+  ch.onmessage = e => { if(!did) opened(); if(ch === dc) onChunk(e.data); };
+  ch.onclose = () => { if(ch === dc && !(got.items && got.done)) qrFail('Соединение прервалось.'); };
+}
+
+function askConfirm(n){
+  const known = remoteFp ? knownPeer(remoteFp) : null;
+  const who = remoteName || (known && known.name) || 'Другое устройство';
+  qrStep('confirm', who + ' хочет синхронизироваться',
+    (known ? 'Знакомое устройство.' : 'Новое устройство.') +
+    (n !== null ? ' Вещей на нём: ' + n + '.' : '') +
+    ' Списки сольются: недостающее добавится к вам и к нему.');
+  armConnectTimer(180000, 'Время на ответ вышло.');
+}
+function qrAccept(){
+  if(role !== 'show' || !dc || decided) return;
+  decided = true; accepted = true;
+  qrStep('wait', 'Принято', 'Обмениваемся списками…');
+  armConnectTimer(30000, 'Соединение было, но обмен не завершился. Попробуйте ещё раз.');
+  sendObj({ t: 'ok', name: profile });
+  sendObj({ t: 'items', items: items });
+}
+function qrReject(){
+  if(role !== 'show' || decided) return;
+  decided = true;
+  sendObj({ t: 'no' });
+  const all = [dc, pc];
+  resetPeerState();
+  setTimeout(() => all.forEach(x => { try{ if(x) x.close(); }catch(e){} }), 400);   // даём «no» уйти
+  qrStep('choose', 'Отклонено', 'Синхронизация отменена, списки не менялись.');
 }
 
 function sendObj(obj){
@@ -1327,12 +1620,29 @@ function onChunk(raw){
 
 function onObj(o){
   if(!o || typeof o !== 'object') return;
-  if(o.t === 'items' && !got.items){
+  if(o.t === 'hello' && !helloGot){
+    helloGot = true;
+    remoteName = cleanName(o.name);
+    if(role === 'show') askConfirm(Number.isInteger(o.n) && o.n >= 0 ? o.n : null);
+    // Chrome может потерять сообщение, отправленное сразу после того, как канал пришёл с другой стороны,
+    // поэтому второе устройство повторяет «hello» в ответ на «hello» первого — тот уже точно дойдёт
+    else sendObj({ t: 'hello', name: profile, n: items.filter(i => !i.deleted).length });
+  }else if(o.t === 'ok' && role === 'scan' && !accepted){
+    accepted = true;
+    if(o.name !== undefined) remoteName = cleanName(o.name);
+    qrStep('wait', 'Подтверждено', 'Обмениваемся списками…');
+    armConnectTimer(30000, 'Соединение было, но обмен не завершился. Попробуйте ещё раз.');
+    sendObj({ t: 'items', items: items });
+  }else if(o.t === 'no' && role === 'scan'){
+    closePeer();
+    qrStep('choose', 'Отклонено', 'На первом устройстве отказались от синхронизации. Ничего не изменилось.');
+    return;
+  }else if(o.t === 'items' && accepted && !got.items){
     const r = applyRemote(o.items);
     if(r) lastStats = { added: r.added, updated: r.updated, conflicts: r.conflicts.length };
     got.items = true;
     sendObj({ t: 'done' });
-  }else if(o.t === 'done'){
+  }else if(o.t === 'done' && accepted){
     got.done = true;
   }
   if(got.items && got.done) finishQr();
@@ -1340,14 +1650,21 @@ function onObj(o){
 
 function finishQr(){
   clearTimeout(connectTimer);
+  const isNew = !!remoteFp && !knownPeer(remoteFp);
+  if(remoteFp) rememberPeer(remoteFp, remoteName);
   const s = lastStats || { added: 0, updated: 0, conflicts: 0 };
   qrStep('wait', 'Готово',
     'Новых вещей: ' + s.added + '. Обновлено: ' + s.updated + '.' +
-    (s.conflicts ? ' Удалено на другом устройстве: ' + s.conflicts + ' — ответьте в появившемся окне.' : ''));
+    (s.conflicts ? ' Удалено на другом устройстве: ' + s.conflicts + ' — ответьте в появившемся окне.' : '') +
+    (isNew && devKeyState === 'persist' ? ' Устройство запомнено: в следующий раз хватит одного сканирования.' : ''));
   qrCloseBtn.textContent = 'Готово';
   showToast('Синхронизировано');
   scheduleSync();
-  setTimeout(closePeer, 500);
+  const all = [dc, pc];
+  setTimeout(() => {
+    if(dc === all[0]){ resetPeerState(); }
+    all.forEach(x => { try{ if(x) x.close(); }catch(e){} });
+  }, 500);
 }
 
 /* ===== события ===== */
@@ -1400,6 +1717,7 @@ statusBtn.addEventListener('click', () => {
   gistIdInput.value = gistId;
   $('settingsName').value = profile;
   if(gistId){ gistIdDisplay.style.display = 'flex'; gistIdValue.textContent = gistId; } else { gistIdDisplay.style.display = 'none'; }
+  renderPeers(); renderKeyInfo();
   overlay.classList.add('show');
 });
 cancelBtn.addEventListener('click', () => overlay.classList.remove('show'));
@@ -1443,6 +1761,14 @@ $('qrStartBtn').addEventListener('click', qrStart);
 $('qrJoinBtn').addEventListener('click', qrJoin);
 qrNextBtn.addEventListener('click', qrNext);
 qrCloseBtn.addEventListener('click', closeQr);
+$('qrAcceptBtn').addEventListener('click', qrAccept);
+$('qrRejectBtn').addEventListener('click', qrReject);
+$('peerList').addEventListener('click', e => {
+  const b = e.target.closest('.peer-forget');
+  if(!b) return;
+  forgetPeer(b.dataset.f);
+  showToast('Устройство забыто: следующий обмен — в два сканирования');
+});
 $('qrPasteBtn').addEventListener('click', () => {
   if(!qrExpect) return;
   handleCode($('qrPasteText').value, qrExpect);
@@ -1548,6 +1874,7 @@ window.addEventListener('online', () => { if(token && gistId) syncGist(); });
   el.classList.toggle('weak', ID_GEN.key === 'math');
   console.info('Генератор id:', ID_GEN.name);
 })();
+renderPeers();
 loadCache();
 loadPending();
 render();
