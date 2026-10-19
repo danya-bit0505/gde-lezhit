@@ -349,6 +349,20 @@
   .peer-forget:hover{ color: var(--danger); border-color: var(--danger); }
   #qrConfirm button{ padding: 1rem; font-size: 0.875rem; }
 
+  /* ---- заметная кнопка синхронизации: зелёная «таблетка» с подписью ---- */
+  :root{ --sync: #1e7f3f; --sync-ring: rgba(46, 160, 87, .28); }
+  html[data-theme="light"]{ --sync-ring: rgba(30, 127, 63, .2); }
+  .icon-btn.sync-btn{
+    width: auto; height: 34px; border-radius: 999px; padding: 0 0.85em 0 0.7em; gap: 0.4em;
+    background: var(--sync); border: 1px solid var(--sync); color: #fff;
+    font-family: inherit; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.02em;
+    box-shadow: 0 0 0 3px var(--sync-ring); white-space: nowrap;
+  }
+  .icon-btn.sync-btn .ic{ font-size: 1.1rem; line-height: 1; }
+  .icon-btn.sync-btn:hover{ border-color: var(--sync); filter: brightness(1.12); }
+  /* на узком экране с крупным шрифтом кнопки переезжают под заголовок, а не вылезают за край */
+  header{ flex-wrap: wrap; row-gap: 12px; }
+  .header-right{ flex: 1 1 0%; justify-content: flex-end; max-width: 100%; }
   /* ---- вырез камеры, «остров» и закруглённые углы (iPhone, установленное приложение) ---- */
   .wrap{
     padding-top: calc(20px + env(safe-area-inset-top, 0px));
@@ -382,7 +396,7 @@
   <header>
     <h1>Где лежит</h1>
     <div class="header-right">
-      <button class="icon-btn" id="qrBtn" title="Синхронизация по QR" aria-label="Синхронизация по QR">⇄</button>
+      <button class="icon-btn sync-btn" id="qrBtn" title="Синхронизация по QR" aria-label="Синхронизация по QR"><span class="ic" aria-hidden="true">⇄</span><span class="lbl">Обмен</span></button>
       <button class="theme-toggle" id="themeToggle" title="Переключить тему"></button>
       <div class="font-ctrl" title="Размер шрифта">
         <button id="fontMinus" aria-label="Уменьшить шрифт">A−</button>
