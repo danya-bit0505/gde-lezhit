@@ -363,6 +363,18 @@
   /* на узком экране с крупным шрифтом кнопки переезжают под заголовок, а не вылезают за край */
   header{ flex-wrap: wrap; row-gap: 12px; }
   .header-right{ flex: 1 1 0%; justify-content: flex-end; max-width: 100%; }
+  /* ---- старые Safari (iPhone 6 и т.п.) ---- */
+  .overlay{ top: 0; right: 0; bottom: 0; left: 0; }
+  .scan-box{ cursor: pointer; }
+  html.nogap header > * + *, html.nogap .modal .row > * + *, html.nogap .gist-id-box > * + *,
+  html.nogap .update-bar > * + *, html.nogap .delete-preview > * + *, html.nogap .peer > * + *,
+  html.nogap .status > * + *, html.nogap .sync-btn > * + *{ margin-left: 8px; }
+  html.nogap .item > *{ margin-right: 6px; }
+  html.nogap .item > :last-child{ margin-right: 0; }
+  html.nogap .header-right > *, html.nogap .chips > *{ margin: 0 0 6px 8px; }
+  html.nogap .qr-choose > * + *{ margin-top: 10px; }
+  html.nogap .add-form > *{ margin-bottom: 8px; }
+  @media (min-width: 481px){ html.nogap .add-form > * + *{ margin-left: 8px; } }
   /* ---- вырез камеры, «остров» и закруглённые углы (iPhone, установленное приложение) ---- */
   .wrap{
     padding-top: calc(20px + env(safe-area-inset-top, 0px));
@@ -463,6 +475,7 @@
     <h2 class="sep-h">Об устройстве</h2>
     <p class="tech-info" id="idGenInfo"></p>
     <p class="tech-info" id="keyInfo">Ключ устройства: проверяем…</p>
+    <p class="tech-info" id="diagInfo">Проверяем возможности браузера…</p>
 
     <div class="row">
       <button class="ghost" id="cancelBtn">Закрыть</button>
@@ -491,7 +504,7 @@
     </div>
 
     <div id="qrScan" hidden>
-      <div class="scan-box"><video id="qrVideo" playsinline muted></video></div>
+      <div class="scan-box"><video id="qrVideo" playsinline webkit-playsinline autoplay muted></video></div>
       <details class="qr-manual" id="qrManualScan">
         <summary>Ввести код вручную</summary>
         <textarea id="qrPasteText" placeholder="Вставьте код сюда"></textarea>
@@ -1151,55 +1164,112 @@ function stopScan(){
   qrVideo.srcObject = null;
 }
 
+let jsqrPromise = null;
 function loadJsQR(){
-  return new Promise(resolve => {
-    if(window.jsQR) return resolve(window.jsQR);
+  if(window.jsQR) return Promise.resolve(window.jsQR);
+  if(jsqrPromise) return jsqrPromise;
+  jsqrPromise = new Promise(resolve => {
     const s = document.createElement('script');
     s.src = 'jsQR.js';
     s.onload = () => resolve(window.jsQR || null);
-    s.onerror = () => resolve(null);
+    s.onerror = () => { s.remove(); jsqrPromise = null; resolve(null); };   // файла нет — попробуем в следующий раз
     document.head.appendChild(s);
   });
+  return jsqrPromise;
+}
+
+/* --- старые айфоны --- */
+function iosVersion(){
+  const m = navigator.userAgent.match(/OS (\d+)_(\d+)(?:_(\d+))? like Mac OS X/);
+  return m ? [+m[1], +m[2], +(m[3] || 0)] : null;
+}
+const isStandalone = () => window.navigator.standalone === true ||
+  !!(window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+// Apple дала приложениям с главного экрана камеру только в iOS 13.4
+function iosNoStandaloneCamera(){
+  const v = iosVersion();
+  return !!v && isStandalone() && (v[0] < 13 || (v[0] === 13 && v[1] < 4));
+}
+async function qrReader(){
+  if('BarcodeDetector' in window){
+    try{
+      if((await BarcodeDetector.getSupportedFormats()).includes('qr_code')) return { name: 'встроенное', detector: new BarcodeDetector({ formats: ['qr_code'] }) };
+    }catch(e){ /* нет — попробуем jsQR */ }
+  }
+  const jsq = await loadJsQR();
+  return jsq ? { name: 'jsQR.js', jsq } : null;
+}
+async function renderDiag(){
+  const el = $('diagInfo');
+  if(!el) return;
+  const v = iosVersion(), ua = navigator.userAgent;
+  const sys = v ? 'iOS ' + v.join('.') : /Android/.test(ua) ? 'Android' : /Windows/.test(ua) ? 'Windows' : /Mac OS X/.test(ua) ? 'macOS' : 'другая';
+  const cam = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia) && !iosNoStandaloneCamera();
+  const rtc = typeof RTCPeerConnection !== 'undefined';
+  const r = await qrReader();
+  el.textContent = 'Система: ' + sys + ', ' + (isStandalone() ? 'с главного экрана' : 'в браузере') +
+    ' · Камера: ' + (cam ? 'есть' : 'недоступна') + ' · WebRTC: ' + (rtc ? 'есть' : 'нет') +
+    ' · Чтение QR: ' + (r ? r.name : 'нет — добавьте jsQR.js');
+  el.classList.toggle('weak', !cam || !rtc || !r);
 }
 
 async function startScan(onText){
   stopScan();
   scanning = true;
-  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
-    qrHint.textContent = 'Камера недоступна в этом режиме. Введите код вручную ниже.';
-    $('qrManualScan').open = true;
-    return;
-  }
+  const box = qrVideo.parentElement;
+  box.hidden = false;
+  box.onclick = null;
+  const noCam = msg => { stopScan(); box.hidden = true; qrHint.textContent = msg; $('qrManualScan').open = true; };
+  const manualTip = ' Можно прислать код себе сообщением и вставить его сюда.';
+
+  if(iosNoStandaloneCamera())
+    return noCam('На этой версии iOS у приложений с главного экрана нет доступа к камере (Apple включила его только в iOS 13.4). Введите код вручную ниже.' + manualTip);
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia)
+    return noCam('Камера недоступна в этом режиме. Введите код вручную ниже.' + manualTip);
+
+  const reader = await qrReader();          // сначала читалка: без неё камеру включать незачем
+  if(!scanning) return;
+  if(!reader)
+    return noCam('Этот браузер не умеет читать QR сам, а файла jsQR.js рядом с приложением нет. Введите код вручную ниже.' + manualTip);
+  const detector = reader.detector || null, jsq = reader.jsq || null;
+
   let stream;
   try{
     stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
   }catch(e){
     console.error(e);
-    qrHint.textContent = (e && e.name === 'NotFoundError')
+    if(!scanning) return;
+    return noCam((e && e.name === 'NotFoundError')
       ? 'Камера не найдена. Введите код вручную ниже.'
-      : 'Нет доступа к камере. Разрешите её в настройках браузера или введите код вручную ниже.';
-    $('qrManualScan').open = true;
-    return;
+      : 'Нет доступа к камере. Разрешите её в настройках (на айфоне: Настройки → Safari → Камера) или введите код вручную ниже.');
   }
   if(!scanning){ stream.getTracks().forEach(t => t.stop()); return; }
   qrStream = stream;
+  // iOS показывает чёрный прямоугольник, если у видео нет этих атрибутов к моменту подключения потока
+  qrVideo.setAttribute('playsinline', ''); qrVideo.setAttribute('webkit-playsinline', '');
+  qrVideo.setAttribute('autoplay', ''); qrVideo.setAttribute('muted', ''); qrVideo.muted = true;
   qrVideo.srcObject = stream;
-  try{ await qrVideo.play(); }catch(e){ /* автозапуск мог быть заблокирован, кадры всё равно пойдут */ }
-
-  let detector = null;
-  if('BarcodeDetector' in window){
-    try{
-      const fmts = await BarcodeDetector.getSupportedFormats();
-      if(fmts.includes('qr_code')) detector = new BarcodeDetector({ formats: ['qr_code'] });
-    }catch(e){ /* нет — попробуем jsQR */ }
-  }
-  const jsq = detector ? null : await loadJsQR();
-  if(!scanning) return;
-  if(!detector && !jsq){
-    qrHint.textContent = 'Этот браузер не умеет читать QR сам. Введите код вручную ниже (или добавьте файл jsQR.js рядом с index.html).';
-    $('qrManualScan').open = true;
-    return;
-  }
+  const tryPlay = () => { const p = qrVideo.play(); if(p && p.catch) p.catch(() => {}); };
+  box.onclick = tryPlay;                    // на iOS запуск иногда разрешён только по касанию
+  const started = Date.now();
+  // play() на пустом потоке может не завершиться никогда — ждём не дольше 1,5 с и идём дальше
+  try{
+    await Promise.race([qrVideo.play(), new Promise(r => setTimeout(r, 1500))]);
+  }catch(e){ if(scanning) qrHint.textContent = 'Коснитесь чёрного окна, чтобы включить камеру.'; }
+  if(!scanning || qrStream !== stream) return;
+  let warned = false;
+  const watch = () => {                     // камера разрешена, а картинки нет
+    if(!scanning || qrStream !== stream) return;
+    if(qrVideo.videoWidth){ return; }
+    if(!warned && Date.now() - started > 4000){
+      warned = true;
+      qrHint.textContent = 'Камера не показывает изображение. Коснитесь чёрного окна. Если не поможет — введите код вручную ниже.' + manualTip;
+      $('qrManualScan').open = true;
+      tryPlay();
+    }
+    setTimeout(watch, 500);
+  };
+  watch();
 
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
@@ -1758,7 +1828,7 @@ statusBtn.addEventListener('click', () => {
   gistIdInput.value = gistId;
   $('settingsName').value = profile;
   if(gistId){ gistIdDisplay.style.display = 'flex'; gistIdValue.textContent = gistId; } else { gistIdDisplay.style.display = 'none'; }
-  renderPeers(); renderKeyInfo();
+  renderPeers(); renderKeyInfo(); renderDiag();
   overlay.classList.add('show');
 });
 cancelBtn.addEventListener('click', () => overlay.classList.remove('show'));
@@ -1907,6 +1977,17 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('online', () => { if(token && gistId) syncGist(); });
 
 /* ===== запуск ===== */
+(() => {   // Safari до 14.1 не знает gap у flex: без него кнопки слипаются — включаем запасные отступы
+  try{
+    const d = document.createElement('div');
+    d.style.cssText = 'display:flex;flex-direction:column;row-gap:1px;position:absolute;visibility:hidden';
+    d.appendChild(document.createElement('div')); d.appendChild(document.createElement('div'));
+    document.body.appendChild(d);
+    const ok = d.scrollHeight === 1;
+    d.parentNode.removeChild(d);
+    if(!ok) document.documentElement.classList.add('nogap');
+  }catch(e){}
+})();
 (() => {
   const el = $('idGenInfo');
   el.innerHTML = 'Генератор id: <b></b> <span></span>';
