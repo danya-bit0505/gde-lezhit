@@ -363,14 +363,28 @@
   /* на узком экране с крупным шрифтом кнопки переезжают под заголовок, а не вылезают за край */
   header{ flex-wrap: wrap; row-gap: 12px; }
   .header-right{ flex: 1 1 0%; justify-content: flex-end; max-width: 100%; }
+  /* ---- карточка вещи: текст слева переносится сколько угодно, кнопки и подписи всегда справа ---- */
+  /* если рядом с кнопками тексту остаётся меньше ~9 символов (крупный шрифт на узком экране),
+     колонка с кнопками уходит под текст — но всё так же к правому краю */
+  .item{ flex-wrap: wrap; align-items: flex-start; gap: 10px 12px; }
+  .item-text{ flex: 1 1 9rem; min-width: 0; overflow-wrap: break-word; line-height: 1.35; }
+  .item-text .name{ font-size: 0.906rem; font-weight: 600; }
+  .item-text .place{ font-size: 0.875rem; color: var(--accent); margin-top: 0.3em; }
+  .item-text .arrow{ color: var(--muted); font-weight: 400; }
+  .item-side{ flex: none; margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; text-align: right; }
+  .item-btns{ display: flex; gap: 6px; }
+  .item-btns button{ min-width: 40px; min-height: 40px; display: flex; align-items: center; justify-content: center; }
+  .item-side .owner, .item-side .meta{ max-width: 7.5rem; overflow: hidden; text-overflow: ellipsis; }
+
   /* ---- старые Safari (iPhone 6 и т.п.) ---- */
   .overlay{ top: 0; right: 0; bottom: 0; left: 0; }
   .scan-box{ cursor: pointer; }
   html.nogap header > * + *, html.nogap .modal .row > * + *, html.nogap .gist-id-box > * + *,
   html.nogap .update-bar > * + *, html.nogap .delete-preview > * + *, html.nogap .peer > * + *,
   html.nogap .status > * + *, html.nogap .sync-btn > * + *{ margin-left: 8px; }
-  html.nogap .item > *{ margin-right: 6px; }
-  html.nogap .item > :last-child{ margin-right: 0; }
+  html.nogap .item-text{ margin-right: 12px; }
+  html.nogap .item-side > * + *{ margin-top: 6px; }
+  html.nogap .item-btns > * + *{ margin-left: 6px; }
   html.nogap .header-right > *, html.nogap .chips > *{ margin: 0 0 6px 8px; }
   html.nogap .qr-choose > * + *{ margin-top: 10px; }
   html.nogap .add-form > *{ margin-bottom: 8px; }
@@ -829,13 +843,18 @@ function render(){
   emptyEl.style.display = 'none';
   listEl.innerHTML = sorted.map(it => `
     <div class="item" data-id="${escapeHtml(it.id)}">
-      <span class="name">${highlight(it.name, q)}</span>
-      <span class="arrow">→</span>
-      <span class="place">${highlight(it.place, q)}</span>
-      ${multi ? `<span class="owner">${escapeHtml(ownerLabel(it.owner || ''))}</span>` : ''}
-      <span class="meta">${timeAgo(it.updatedAt)}</span>
-      <button class="edit" data-id="${escapeHtml(it.id)}" title="Изменить" aria-label="Изменить">✎</button>
-      <button class="del" data-id="${escapeHtml(it.id)}" title="Удалить" aria-label="Удалить">✕</button>
+      <div class="item-text">
+        <div class="name">${highlight(it.name, q)}</div>
+        <div class="place"><span class="arrow">→</span> ${highlight(it.place, q)}</div>
+      </div>
+      <div class="item-side">
+        <div class="item-btns">
+          <button class="edit" data-id="${escapeHtml(it.id)}" title="Изменить" aria-label="Изменить">✎</button>
+          <button class="del" data-id="${escapeHtml(it.id)}" title="Удалить" aria-label="Удалить">✕</button>
+        </div>
+        ${multi ? `<span class="owner">${escapeHtml(ownerLabel(it.owner || ''))}</span>` : ''}
+        <span class="meta">${timeAgo(it.updatedAt)}</span>
+      </div>
     </div>
   `).join('');
 }
