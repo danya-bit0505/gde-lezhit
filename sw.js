@@ -1,10 +1,15 @@
-// Стратегия: stale-while-revalidate.
-// Приложение всегда открывается из кеша (мгновенно и без сети),
-// а в фоне подтягивается свежая версия. Если файл изменился —
-// страница получает сообщение UPDATE_READY и показывает плашку «Обновить».
-// CACHE_VERSION меняй только если поменялся список файлов в APP_SHELL.
-const CACHE_VERSION = 'v3';
+// Стратегия: приложение всегда открывается из кеша — мгновенно и без сети.
+// Свежая версия скачивается в фоне, но НЕ подменяет текущую: она лежит отдельно
+// («отложенная» версия), а приложение показывает плашку «Обновить».
+// Пока её не нажали, при каждом запуске открывается прежняя версия.
+// После нажатия отложенные файлы переносятся в основной кеш, и страница перезагружается.
+//
+// CACHE_VERSION меняй, только если поменялся список файлов в APP_SHELL.
+// Новый sw.js тоже не включается сам: ждёт той же кнопки «Обновить».
+const CACHE_VERSION = 'v4';
 const CACHE_NAME = 'gde-lezhit-' + CACHE_VERSION;
+const NEXT_NAME = CACHE_NAME + '-next';   // скачанная, но ещё не применённая версия
+const INSTALL_NAME = CACHE_NAME + '-install';   // файлы нового sw.js до его включения: прежняя версия их не видит
 
 const APP_SHELL = [
   './',
@@ -43,39 +48,72 @@ async function notifyClients() {
   clients.forEach(c => c.postMessage({ type: 'UPDATE_READY' }));
 }
 
-// Тихо тянем свежую копию в обход HTTP-кеша; если отличается — кладём в кеш
+async function hasStaged() {
+  if (!(await caches.has(NEXT_NAME))) return false;
+  const next = await caches.open(NEXT_NAME);
+  return (await next.keys()).length > 0;
+}
+
+// Тихо тянем свежую копию в обход HTTP-кеша.
+// Возвращает true, если файл изменился и отложен до нажатия «Обновить».
 async function revalidate(url) {
   try {
     const fresh = await fetch(url, { cache: 'no-cache' });
-    if (!fresh || fresh.status !== 200 || fresh.type !== 'basic') return;
+    if (!fresh || fresh.status !== 200 || fresh.type !== 'basic') return false;
 
-    const cache = await caches.open(CACHE_NAME);
-    const old = await cache.match(url, { ignoreSearch: true });
+    const main = await caches.open(CACHE_NAME);
+    const keys = isDoc(url) ? DOC_KEYS : [url];
+    const old = await main.match(url, { ignoreSearch: true });
 
-    let changed = false;
-    if (old) {
-      const [a, b] = await Promise.all([old.clone().arrayBuffer(), fresh.clone().arrayBuffer()]);
-      changed = !sameBytes(a, b);
+    if (!old) {                                   // такого файла в текущей версии нет — просто кладём
+      await Promise.all(keys.map(k => main.put(k, fresh.clone())));
+      return false;
     }
-
-    if (!old || changed) {
-      if (isDoc(url)) {
-        // «/» и «/index.html» — одна и та же страница, держим обе записи синхронными
-        await Promise.all(DOC_KEYS.map(k => cache.put(k, fresh.clone())));
-      } else {
-        await cache.put(url, fresh.clone());
+    const [a, b] = await Promise.all([old.clone().arrayBuffer(), fresh.clone().arrayBuffer()]);
+    if (sameBytes(a, b)) {                        // не изменился (или на сервере откатили) — откладывать нечего
+      if (await caches.has(NEXT_NAME)) {
+        const next = await caches.open(NEXT_NAME);
+        await Promise.all(keys.map(k => next.delete(k)));
       }
+      return false;
     }
-
-    if (changed && isDoc(url)) await notifyClients();
+    const next = await caches.open(NEXT_NAME);
+    await Promise.all(keys.map(k => next.put(k, fresh.clone())));
+    return true;
   } catch (e) {
-    // нет сети — ничего страшного, остаёмся на кеше
+    return false;                                 // нет сети — ничего страшного, остаёмся на кеше
   }
+}
+
+// Страница изменилась — подтягиваем и остальные файлы, чтобы новая версия применилась целиком
+async function stageAll() {
+  for (const path of APP_SHELL) {
+    if (path === './' || path === './index.html') continue;
+    await revalidate(new URL(path, SCOPE).href);
+  }
+}
+
+async function checkFor(url) {
+  const changed = await revalidate(url);
+  if (changed && isDoc(url)) await stageAll();
+  if (changed) await notifyClients();
+}
+
+// «Обновить»: переносим отложенную версию в основной кеш
+async function applyStaged() {
+  const main = await caches.open(CACHE_NAME);
+  const next = await caches.open(NEXT_NAME);
+  for (const req of await next.keys()) {
+    const res = await next.match(req);
+    if (res) await main.put(req, res);
+  }
+  await caches.delete(NEXT_NAME);
 }
 
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
-    const cache = await caches.open(CACHE_NAME);
+    await caches.delete(INSTALL_NAME);
+    const cache = await caches.open(INSTALL_NAME);
     // cache:'reload' — не брать устаревшее из HTTP-кеша GitHub Pages
     await Promise.all(APP_SHELL.map(async path => {
       const res = await fetch(new Request(path, { cache: 'reload' }));
@@ -88,19 +126,59 @@ self.addEventListener('install', event => {
         if (res.ok) await cache.put(path, res);
       } catch (e) { /* файла нет: не страшно */ }
     }));
-    await self.skipWaiting();
+    // Первая установка — включаемся сразу. Если уже работает прежняя версия — ждём «Обновить».
+    if (!self.registration.active) await self.skipWaiting();
   })());
 });
+
+// Включение нового sw.js. Браузер включает его сам, когда приложение закрыли полностью,
+// поэтому без нажатия «Обновить» свежие файлы не становятся основными, а откладываются —
+// пользователь увидит прежнюю версию и плашку, как и при обычном обновлении.
+let consented = false;                          // нажали «Обновить» (пришёл SKIP_WAITING)
+
+async function copyCache(fromName, toName, onlyChanged) {
+  const from = await caches.open(fromName);
+  let to = null;
+  const main = onlyChanged ? await caches.open(CACHE_NAME) : null;
+  for (const req of await from.keys()) {
+    const res = await from.match(req);
+    if (!res) continue;
+    if (main) {
+      const old = await main.match(req, { ignoreSearch: true });
+      if (old) {
+        const [x, y] = await Promise.all([old.clone().arrayBuffer(), res.clone().arrayBuffer()]);
+        if (sameBytes(x, y)) continue;          // не изменился — откладывать нечего
+      }
+    }
+    if (!to) to = await caches.open(toName);
+    await to.put(req, res);
+  }
+}
 
 self.addEventListener('activate', event => {
   event.waitUntil((async () => {
     const keys = await caches.keys();
+    const service = k => k === NEXT_NAME || k === INSTALL_NAME || k.endsWith('-next') || k.endsWith('-install');
+    const prevMain = keys.find(k => k.startsWith('gde-lezhit-') && !service(k) && k !== CACHE_NAME);
+    const hasMain = keys.includes(CACHE_NAME) && (await (await caches.open(CACHE_NAME)).keys()).length > 0;
+    const legacy = prevMain === 'gde-lezhit-v3';    // прежняя схема не умеет «Обновить» по-новому — применяем сразу
+    const firstRun = !hasMain && !prevMain;
+
+    if (firstRun || consented || legacy) {
+      await copyCache(INSTALL_NAME, CACHE_NAME, false);   // свежие файлы становятся основными
+      await caches.delete(NEXT_NAME);
+    } else {
+      if (!hasMain && prevMain) await copyCache(prevMain, CACHE_NAME, false);   // сменилась CACHE_VERSION — переносим текущую версию
+      await copyCache(INSTALL_NAME, NEXT_NAME, true);    // а свежую откладываем до «Обновить»
+    }
+    await caches.delete(INSTALL_NAME);
     await Promise.all(
-      keys
-        .filter(k => k.startsWith('gde-lezhit-') && k !== CACHE_NAME)
+      (await caches.keys())
+        .filter(k => k.startsWith('gde-lezhit-') && k !== CACHE_NAME && k !== NEXT_NAME)
         .map(k => caches.delete(k))
     );
     await self.clients.claim();
+    if (await hasStaged()) await notifyClients();
   })());
 });
 
@@ -117,7 +195,7 @@ self.addEventListener('fetch', event => {
     const cached = await cache.match(req, { ignoreSearch: true });
 
     if (cached) {
-      event.waitUntil(revalidate(req.url));
+      event.waitUntil(checkFor(req.url));
       return cached;
     }
 
@@ -137,9 +215,21 @@ self.addEventListener('fetch', event => {
   })());
 });
 
-// Страница просит проверить обновления (например, когда её снова открыли из фона)
 self.addEventListener('message', event => {
-  if (event.data === 'CHECK_UPDATE') {
-    event.waitUntil(revalidate(SCOPE + 'index.html'));
+  const msg = event.data;
+  if (msg === 'CHECK_UPDATE') {
+    // сначала — уже скачанная версия (работает и без сети), потом — проверка сервера
+    event.waitUntil((async () => {
+      if (await hasStaged()) await notifyClients();
+      await checkFor(SCOPE + 'index.html');
+    })());
+  } else if (msg === 'APPLY_UPDATE') {
+    const port = event.ports && event.ports[0];
+    event.waitUntil(applyStaged()
+      .then(() => { if (port) port.postMessage('APPLIED'); })
+      .catch(() => { if (port) port.postMessage('FAILED'); }));
+  } else if (msg === 'SKIP_WAITING') {
+    consented = true;
+    self.skipWaiting();
   }
 });

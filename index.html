@@ -1982,22 +1982,61 @@ if('storage' in navigator && 'persist' in navigator.storage){
 }
 
 /* ===== service worker + фоновые обновления ===== */
-const updateBar = $('updateBar');
-$('updateBtn').addEventListener('click', () => location.reload());
+const updateBar = $('updateBar'), updateBtn = $('updateBtn');
+let swReg = null;
+const showUpdate = () => updateBar.classList.add('show');
+
+// «Обновить»: просим SW перенести скачанную версию в основной кеш; если ждёт новый sw.js — включаем и его
+async function applyUpdate(){
+  updateBtn.disabled = true;
+  updateBtn.textContent = 'Обновляем…';
+  const sw = navigator.serviceWorker;
+  const ctl = sw && sw.controller;
+  if(ctl){
+    await new Promise(res => {
+      try{
+        const ch = new MessageChannel();
+        ch.port1.onmessage = () => res();
+        ctl.postMessage('APPLY_UPDATE', [ch.port2]);
+      }catch(e){ res(); }
+      setTimeout(res, 2000);                    // прежние версии SW не отвечают — не ждём вечно
+    });
+  }
+  if(swReg && swReg.waiting){
+    let done = false;
+    const go = () => { if(!done){ done = true; location.reload(); } };
+    sw.addEventListener('controllerchange', go);
+    swReg.waiting.postMessage('SKIP_WAITING');
+    setTimeout(go, 3000);
+    return;
+  }
+  location.reload();
+}
+updateBtn.addEventListener('click', applyUpdate);
 
 if('serviceWorker' in navigator){
   navigator.serviceWorker.addEventListener('message', e => {
-    if(e.data && e.data.type === 'UPDATE_READY') updateBar.classList.add('show');
+    if(e.data && e.data.type === 'UPDATE_READY') showUpdate();
   });
 
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js').then(reg => {
-      // при каждом запуске SW сам проверяет обновление; дополнительно —
-      // когда приложение возвращается из фона и раз в 30 минут, пока открыто
+      if(!reg) return;
+      swReg = reg;
+      // новый sw.js скачан и ждёт — тоже повод для плашки
+      const waitingReady = () => { if(reg.waiting && navigator.serviceWorker.controller) showUpdate(); };
+      waitingReady();
+      reg.addEventListener('updatefound', () => {
+        const w = reg.installing;
+        if(w) w.addEventListener('statechange', () => { if(w.state === 'installed') waitingReady(); });
+      });
+      const ask = () => { if(navigator.serviceWorker.controller) navigator.serviceWorker.controller.postMessage('CHECK_UPDATE'); };
+      ask();   // при запуске SW скажет, лежит ли уже скачанная версия (работает и без сети)
+      // дополнительно — когда приложение возвращается из фона и раз в 30 минут, пока открыто
       const check = () => {
         if(!navigator.onLine) return;
         reg.update().catch(() => {});
-        if(navigator.serviceWorker.controller) navigator.serviceWorker.controller.postMessage('CHECK_UPDATE');
+        ask();
       };
       document.addEventListener('visibilitychange', () => {
         if(document.visibilityState === 'visible') check();
