@@ -399,6 +399,23 @@
   @keyframes undo-shrink{ from{ transform: scaleX(1); } to{ transform: scaleX(0); } }
   html.nogap .undo-bar > * + *{ margin-left: 12px; }
 
+  /* ---- корзина ---- */
+  .trash-link{
+    display: block; margin: 18px auto 0; background: none; border: 1px solid var(--line); color: var(--muted);
+    font-family: inherit; font-size: 0.8125rem; padding: 0.7em 1.2em; border-radius: 999px; cursor: pointer; min-height: 44px;
+  }
+  .trash-link:hover{ color: var(--text); border-color: var(--muted); }
+  #trashList{ margin-top: 6px; }
+  .trash-item{ display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; padding: 12px 0; border-bottom: 1px dashed var(--line); }
+  .trash-text{ flex: 1 1 10rem; min-width: 0; overflow-wrap: break-word; line-height: 1.35; }
+  .trash-text .name{ font-size: 0.875rem; font-weight: 600; color: var(--text); }
+  .trash-text .place{ font-size: 0.8125rem; color: var(--accent); margin-top: 0.2em; }
+  .trash-text .arrow{ color: var(--muted); }
+  .trash-meta{ font-size: 0.6875rem; color: var(--muted); margin-top: 0.35em; }
+  .modal .restore{ flex: none; margin-left: auto; background: var(--sync); color: #fff; border: none; min-height: 44px; padding: 0.6em 1em; }
+  .trash-empty{ text-align: center; padding: 20px 0; }
+  html.nogap .trash-item > * + *{ margin-left: 12px; }
+
   /* ---- старые Safari (iPhone 6 и т.п.) ---- */
   .overlay{ top: 0; right: 0; bottom: 0; left: 0; }
   .scan-box{ cursor: pointer; }
@@ -473,6 +490,7 @@
 
   <div class="list" id="list"></div>
   <div class="empty" id="empty" style="display:none">Пока пусто.</div>
+  <button class="trash-link" id="trashBtn" hidden>🗑 Удалённые (<span id="trashCount">0</span>)</button>
 </div>
 
 <div class="update-bar" id="updateBar">
@@ -480,6 +498,14 @@
   <button id="updateBtn">Обновить</button>
 </div>
 
+<div class="overlay" id="trashOverlay">
+  <div class="modal">
+    <h2>Удалённые вещи</h2>
+    <p>Здесь вещи, удалённые на этом и других устройствах. Они хранятся 90 дней, потом исчезают окончательно. Восстановленная вещь вернётся и на другие устройства при следующей синхронизации.</p>
+    <div id="trashList"></div>
+    <div class="row"><button class="ghost" id="trashCloseBtn">Закрыть</button></div>
+  </div>
+</div>
 <div class="toast" id="toast"></div>
 <div class="undo-bar" id="undoBar" role="status"><span id="undoText"></span><button id="undoBtn">Вернуть</button><span id="undoTimer"></span></div>
 
@@ -494,6 +520,10 @@
     <p>Синхронизация между устройствами рядом, без интернета.</p>
     <div class="row"><button class="primary" id="openQrBtn">Открыть обмен по QR</button></div>
     <div id="peerList" class="peer-list"></div>
+
+    <h2 class="sep-h">Удалённые вещи</h2>
+    <p>Можно посмотреть и восстановить то, что удалили за последние 90 дней.</p>
+    <div class="row"><button class="ghost" id="openTrashBtn">Открыть удалённые</button></div>
 
     <h2 class="sep-h">GitHub Gist</h2>
     <p>Данные хранятся в приватном GitHub Gist. Один раз настройте на каждом устройстве: токен и ID gist'а нужны одинаковые, чтобы устройства видели одни и те же вещи.</p>
@@ -624,7 +654,7 @@
 
 <script src="qrcode.js"></script>
 <script>
-const APP_VERSION = '2026.10.23';   // меняй при каждой выкладке — видно в настройках, удобно проверять обновление
+const APP_VERSION = '2026.10.23.2';   // меняй при каждой выкладке — видно в настройках, удобно проверять обновление
 
 /* ===== хранилище и состояние ===== */
 const GIST_FILENAME = 'items.json';
@@ -854,6 +884,7 @@ function render(){
   const multi = owners.length > 1;
   if(ownerFilter !== '*' && !owners.includes(ownerFilter)) ownerFilter = '*';
   renderChips(owners, multi);
+  renderTrash();
 
   const q = searchEl.value.trim().toLowerCase();
   let list = live;
@@ -1009,15 +1040,63 @@ function hideUndo(){
   undoBar.classList.remove('show');
   undoId = null;
 }
-function undoDelete(){
-  const it = items.find(i => i.id === undoId);
-  hideUndo();
-  if(!it || !it.deleted) return;
+function restoreItem(id){
+  const it = items.find(i => i.id === id);
+  if(!it || !it.deleted) return false;
   delete it.deleted; delete it.deletedBy;
-  it.updatedAt = Math.max(Date.now(), it.updatedAt + 1);
+  it.updatedAt = Math.max(Date.now(), it.updatedAt + 1);   // свежее надгробия — вернётся и на других устройствах
+  if(pending[id]){ delete pending[id]; savePending(); }
   saveCache(); render(); scheduleSync();
-  showToast('Вернули: ' + it.name);
+  showToast('Вернули: ' + (it.name || 'вещь'));
+  return true;
 }
+function undoDelete(){
+  const id = undoId;
+  hideUndo();
+  restoreItem(id);
+}
+
+/* ===== корзина: удалённые вещи =====
+   Надгробия и так хранятся 90 дней (иначе удаление не дойдёт до других устройств),
+   поэтому корзина — просто их список с кнопкой «Восстановить». */
+const trashOverlay = $('trashOverlay'), trashListEl = $('trashList'), trashBtn = $('trashBtn');
+function deletedItems(){
+  return items.filter(i => i.deleted && !isOldTombstone(i)).sort((a, b) => b.updatedAt - a.updatedAt);
+}
+function renderTrash(){
+  const list = deletedItems();
+  trashBtn.hidden = !list.length;
+  $('trashCount').textContent = list.length;
+  if(!trashOverlay.classList.contains('show')) return;
+  if(!list.length){
+    trashListEl.innerHTML = '<p class="trash-empty">Удалённых вещей нет.</p>';
+    return;
+  }
+  trashListEl.innerHTML = list.map(it => {
+    const left = Math.max(1, Math.ceil((it.updatedAt + TOMBSTONE_TTL - Date.now()) / 864e5));
+    return `<div class="trash-item">
+      <div class="trash-text">
+        <div class="name">${escapeHtml(it.name || '(без названия)')}</div>
+        <div class="place"><span class="arrow">→</span> ${escapeHtml(it.place || '—')}</div>
+        <div class="trash-meta">${it.deletedBy ? 'Удалил(а) ' + escapeHtml(it.deletedBy) + ' · ' : 'Удалено · '}${escapeHtml(timeAgo(it.updatedAt))} · исчезнет через ${left} дн.</div>
+      </div>
+      <button class="restore" data-id="${escapeHtml(it.id)}">Восстановить</button>
+    </div>`;
+  }).join('');
+}
+function openTrash(){
+  overlay.classList.remove('show');
+  trashOverlay.classList.add('show');
+  renderTrash();
+}
+trashBtn.addEventListener('click', openTrash);
+$('trashCloseBtn').addEventListener('click', () => trashOverlay.classList.remove('show'));
+$('openTrashBtn').addEventListener('click', openTrash);
+trashOverlay.addEventListener('click', e => { if(e.target === trashOverlay) trashOverlay.classList.remove('show'); });
+trashListEl.addEventListener('click', e => {
+  const b = e.target.closest('.restore');
+  if(b) restoreItem(b.dataset.id);
+});
 undoBtn.addEventListener('click', undoDelete);
 
 /* ===== окно «удалили на другом устройстве» ===== */
@@ -2137,6 +2216,7 @@ window.addEventListener('online', () => { if(token && gistId) syncGist(); });
 renderPeers();
 loadCache();
 loadPending();
+gcTombstones(); saveCache();   // надгробия старше 90 дней чистим и без синхронизации
 render();
 if(!profile) openProfile(true);
 showNextPending();
