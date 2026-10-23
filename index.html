@@ -376,6 +376,29 @@
   .item-btns button{ min-width: 40px; min-height: 40px; display: flex; align-items: center; justify-content: center; }
   .item-side .owner, .item-side .meta{ max-width: 7.5rem; overflow: hidden; text-overflow: ellipsis; }
 
+  /* ---- «Вернуть» после удаления ---- */
+  .undo-bar{
+    position: fixed; left: 50%; transform: translateX(-50%); z-index: 55;
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    width: calc(100% - 32px); max-width: 460px;
+    display: none; align-items: center; gap: 12px;
+    background: var(--text); color: var(--bg); border-radius: 6px;
+    padding: 0.75rem 0.75rem 0.75rem 1rem; box-shadow: 0 6px 24px rgba(0,0,0,.35); overflow: hidden;
+  }
+  .undo-bar.show{ display: flex; }
+  .update-bar.show ~ .undo-bar{ bottom: calc(80px + env(safe-area-inset-bottom, 0px)); }
+  .undo-bar #undoText{ flex: 1; min-width: 0; font-size: 0.8125rem; font-weight: 600; overflow-wrap: anywhere; }
+  .undo-bar #undoBtn{
+    flex: none; background: var(--accent); color: #14140f; border: none; border-radius: 4px;
+    font-family: inherit; font-weight: 700; font-size: 0.875rem; padding: 0.7em 1.1em; min-height: 44px; cursor: pointer;
+  }
+  .undo-bar #undoTimer{
+    position: absolute; left: 0; bottom: 0; height: 3px; width: 100%; background: var(--accent);
+    transform-origin: left; animation: undo-shrink 10s linear forwards;
+  }
+  @keyframes undo-shrink{ from{ transform: scaleX(1); } to{ transform: scaleX(0); } }
+  html.nogap .undo-bar > * + *{ margin-left: 12px; }
+
   /* ---- старые Safari (iPhone 6 и т.п.) ---- */
   .overlay{ top: 0; right: 0; bottom: 0; left: 0; }
   .scan-box{ cursor: pointer; }
@@ -458,6 +481,7 @@
 </div>
 
 <div class="toast" id="toast"></div>
+<div class="undo-bar" id="undoBar" role="status"><span id="undoText"></span><button id="undoBtn">Вернуть</button><span id="undoTimer"></span></div>
 
 <div class="overlay" id="overlay">
   <div class="modal">
@@ -487,6 +511,7 @@
     </div>
 
     <h2 class="sep-h">Об устройстве</h2>
+    <p class="tech-info" id="verInfo"></p>
     <p class="tech-info" id="idGenInfo"></p>
     <p class="tech-info" id="keyInfo">Ключ устройства: проверяем…</p>
     <p class="tech-info" id="diagInfo">Проверяем возможности браузера…</p>
@@ -599,6 +624,8 @@
 
 <script src="qrcode.js"></script>
 <script>
+const APP_VERSION = '2026.10.23';   // меняй при каждой выкладке — видно в настройках, удобно проверять обновление
+
 /* ===== хранилище и состояние ===== */
 const GIST_FILENAME = 'items.json';
 const TOMBSTONE_TTL = 90 * 24 * 3600 * 1000;   // надгробия старше 90 дней чистим
@@ -953,11 +980,45 @@ function confirmDelete(){
     if(!it.deletedBy) delete it.deletedBy;
     it.updatedAt = Date.now();
     saveCache(); render(); scheduleSync();
-    showToast('Удалено');
+    offerUndo(it);
   }
   pendingDeleteId = null;
   deleteOverlay.classList.remove('show');
 }
+
+/* ===== «Вернуть» после удаления ===== */
+// 10 секунд можно передумать. Возврат — это новая правка, свежее надгробия,
+// поэтому вещь вернётся и на тех устройствах, куда удаление уже успело уйти.
+const UNDO_MS = 10000;
+const undoBar = $('undoBar'), undoText = $('undoText'), undoBtn = $('undoBtn'), undoTimer = $('undoTimer');
+let undoId = null, undoTimeout = null;
+function offerUndo(it){
+  undoId = it.id;
+  undoText.textContent = 'Удалено: «' + it.name + '»';
+  toastEl.classList.remove('show');
+  undoBar.classList.remove('show');
+  undoTimer.style.animation = 'none';
+  void undoTimer.offsetWidth;                     // перезапуск полоски времени
+  undoTimer.style.animation = '';
+  undoBar.classList.add('show');
+  clearTimeout(undoTimeout);
+  undoTimeout = setTimeout(hideUndo, UNDO_MS);
+}
+function hideUndo(){
+  clearTimeout(undoTimeout);
+  undoBar.classList.remove('show');
+  undoId = null;
+}
+function undoDelete(){
+  const it = items.find(i => i.id === undoId);
+  hideUndo();
+  if(!it || !it.deleted) return;
+  delete it.deleted; delete it.deletedBy;
+  it.updatedAt = Math.max(Date.now(), it.updatedAt + 1);
+  saveCache(); render(); scheduleSync();
+  showToast('Вернули: ' + it.name);
+}
+undoBtn.addEventListener('click', undoDelete);
 
 /* ===== окно «удалили на другом устройстве» ===== */
 function showNextPending(){
@@ -1368,6 +1429,8 @@ async function loadDeviceKey(){
 }
 
 function renderKeyInfo(){
+  const v = $('verInfo');
+  if(v) v.textContent = 'Версия приложения: ' + APP_VERSION;
   const el = $('keyInfo');
   if(!el) return;
   el.classList.toggle('weak', devKeyState !== 'persist');
