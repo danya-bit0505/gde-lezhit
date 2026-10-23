@@ -1909,6 +1909,23 @@ $('qrCopyBtn').addEventListener('click', async () => {
   catch(e){ ta.select(); try{ document.execCommand('copy'); showToast('Скопировано'); }catch(e2){} }
 });
 
+/* ===== поля ввода: держим курсор в поле зрения =====
+   Chrome на Android после выбора подсказки клавиатуры (и после диктовки) вставляет текст,
+   но не прокручивает узкое поле к курсору — конец строки остаётся за краем.
+   Если курсор стоит в конце, после отрисовки докручиваем поле до конца сами. */
+function keepCaretVisible(el){
+  if(!el || el.tagName !== 'INPUT' || !/^(text|search|password)$/.test(el.type)) return;
+  requestAnimationFrame(() => {
+    try{
+      const end = el.value.length;
+      if(document.activeElement === el && el.selectionStart === end && el.selectionEnd === end && el.scrollWidth > el.clientWidth)
+        el.scrollLeft = el.scrollWidth;
+    }catch(e){ /* у некоторых типов полей нет selectionStart */ }
+  });
+}
+document.addEventListener('input', e => keepCaretVisible(e.target), true);
+document.addEventListener('compositionend', e => keepCaretVisible(e.target), true);
+
 /* ===== тема ===== */
 function applyTheme(theme){
   const metaTheme = document.querySelector('meta[name="theme-color"]');
