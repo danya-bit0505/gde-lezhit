@@ -546,6 +546,7 @@
     <p class="tech-info" id="idGenInfo"></p>
     <p class="tech-info" id="keyInfo">Ключ устройства: проверяем…</p>
     <p class="tech-info" id="diagInfo">Проверяем возможности браузера…</p>
+    <p class="tech-info" id="storageInfo">Хранилище: проверяем…</p>
 
     <div class="row">
       <button class="ghost" id="cancelBtn">Закрыть</button>
@@ -655,7 +656,7 @@
 
 <script src="qrcode.js"></script>
 <script>
-const APP_VERSION = '2026.10.24';   // меняй при каждой выкладке — видно в настройках, удобно проверять обновление
+const APP_VERSION = '2026.10.24.2';   // меняй при каждой выкладке — видно в настройках, удобно проверять обновление
 
 /* ===== хранилище и состояние ===== */
 const GIST_FILENAME = 'items.json';
@@ -1359,7 +1360,27 @@ async function qrReader(){
   const jsq = await loadJsQR();
   return jsq ? { name: 'jsQR.js', jsq } : null;
 }
+// Постоянное хранилище Chrome не вытесняет сам при нехватке места. Обычное — может, и тогда офлайн-запуск
+// пропадает до первого выхода в сеть (данные в localStorage при этом обычно остаются).
+async function renderStorage(){
+  const el = $('storageInfo');
+  if(!el) return;
+  const st = navigator.storage;
+  if(!st || !st.persisted){ el.textContent = 'Хранилище: браузер не сообщает, постоянное ли оно'; el.classList.remove('weak'); return; }
+  let persisted = false, est = null;
+  try{ persisted = await st.persisted(); }catch(e){}
+  if(!persisted && st.persist){ try{ persisted = await st.persist(); }catch(e){} }   // ещё раз попросим — Chrome мог передумать
+  try{ if(st.estimate) est = await st.estimate(); }catch(e){}
+  const mb = b => b >= 1073741824 ? (b / 1073741824).toFixed(1).replace('.', ',') + ' ГБ' : Math.max(0.1, b / 1048576).toFixed(1).replace('.', ',') + ' МБ';
+  el.textContent = 'Хранилище: ' + (persisted
+      ? 'постоянное — Chrome не очистит его сам'
+      : 'обычное — при нехватке места на телефоне Chrome может очистить кеш, и без интернета приложение не откроется до первого подключения') +
+    (est && est.quota ? ' · занято ' + mb(est.usage || 0) + ', доступно сайту ~' + mb(est.quota) : '');
+  el.classList.toggle('weak', !persisted || (est && est.quota && est.quota < 200 * 1048576));
+}
+
 async function renderDiag(){
+  renderStorage();
   const el = $('diagInfo');
   if(!el) return;
   const v = iosVersion(), ua = navigator.userAgent;
@@ -2114,7 +2135,7 @@ fontPlus.addEventListener('click', () => changeFontScale(FONT_STEP));
 applyFontScale();
 
 /* ===== persistent storage ===== */
-if('storage' in navigator && 'persist' in navigator.storage){
+if(navigator.storage && 'persist' in navigator.storage){
   navigator.storage.persisted().then(isPersisted => {
     if(!isPersisted){
       navigator.storage.persist().then(granted => {
