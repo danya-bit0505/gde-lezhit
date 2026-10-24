@@ -401,10 +401,11 @@
 
   /* ---- корзина ---- */
   .trash-link{
-    display: block; margin: 18px auto 0; background: none; border: 1px solid var(--line); color: var(--muted);
-    font-family: inherit; font-size: 0.8125rem; padding: 0.7em 1.2em; border-radius: 999px; cursor: pointer; min-height: 44px;
+    display: block; margin: 18px auto 0; background: var(--line); border: 1px solid var(--muted); color: var(--text);
+    font-family: inherit; font-size: 0.8125rem; font-weight: 600; padding: 0.7em 1.3em; border-radius: 999px; cursor: pointer; min-height: 44px;
   }
-  .trash-link:hover{ color: var(--text); border-color: var(--muted); }
+  .trash-link:hover{ filter: brightness(1.06); }
+  .trash-link:active{ transform: translateY(1px); }
   #trashList{ margin-top: 6px; }
   .trash-item{ display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; padding: 12px 0; border-bottom: 1px dashed var(--line); }
   .trash-text{ flex: 1 1 10rem; min-width: 0; overflow-wrap: break-word; line-height: 1.35; }
@@ -654,7 +655,7 @@
 
 <script src="qrcode.js"></script>
 <script>
-const APP_VERSION = '2026.10.23.2';   // меняй при каждой выкладке — видно в настройках, удобно проверять обновление
+const APP_VERSION = '2026.10.24';   // меняй при каждой выкладке — видно в настройках, удобно проверять обновление
 
 /* ===== хранилище и состояние ===== */
 const GIST_FILENAME = 'items.json';
