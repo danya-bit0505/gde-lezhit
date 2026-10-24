@@ -417,6 +417,19 @@
   .trash-empty{ text-align: center; padding: 20px 0; }
   html.nogap .trash-item > * + *{ margin-left: 12px; }
 
+  /* ---- резервная копия ---- */
+  .backup-bar #backupBarText{ flex: 1; min-width: 0; font-size: 0.8125rem; font-weight: 600; }
+  .backup-bar #backupBarSave{
+    flex: none; background: var(--accent); color: #14140f; border: none; border-radius: 4px;
+    font-family: inherit; font-weight: 700; font-size: 0.875rem; padding: 0.7em 1.1em; min-height: 44px; cursor: pointer;
+  }
+  .backup-bar .ghost-lite{
+    flex: none; background: none; border: 1px solid currentColor; color: inherit; opacity: .75; border-radius: 4px;
+    font-family: inherit; font-size: 0.8125rem; padding: 0.6em 0.9em; min-height: 44px; cursor: pointer;
+  }
+  .update-bar.show ~ .backup-bar{ bottom: calc(80px + env(safe-area-inset-bottom, 0px)); }
+  #backupManual textarea + button{ margin-bottom: 8px; }
+
   /* ---- старые Safari (iPhone 6 и т.п.) ---- */
   .overlay{ top: 0; right: 0; bottom: 0; left: 0; }
   .scan-box{ cursor: pointer; }
@@ -499,6 +512,7 @@
   <button id="updateBtn">Обновить</button>
 </div>
 
+<div class="undo-bar backup-bar" id="backupBar" role="status"><span id="backupBarText">Пора сохранить резервную копию</span><button class="ghost-lite" id="backupBarLater">Позже</button><button id="backupBarSave">Сохранить</button></div>
 <div class="overlay" id="trashOverlay">
   <div class="modal">
     <h2>Удалённые вещи</h2>
@@ -521,6 +535,22 @@
     <p>Синхронизация между устройствами рядом, без интернета.</p>
     <div class="row"><button class="primary" id="openQrBtn">Открыть обмен по QR</button></div>
     <div id="peerList" class="peer-list"></div>
+
+    <h2 class="sep-h">Резервная копия</h2>
+    <p>Файл со всеми вещами — сохраняется без интернета. Из него можно восстановить список или перенести его на другой телефон: копия не заменяет список, а сливается с ним. Токен Gist в копию не попадает.</p>
+    <div class="row"><button class="primary" id="backupSaveBtn">Сохранить копию</button><button class="ghost" id="backupShareBtn" hidden>Поделиться</button></div>
+    <div class="row"><button class="ghost" id="backupLoadBtn">Загрузить из копии</button></div>
+    <input type="file" id="backupFile" accept=".json,application/json,text/plain" hidden>
+    <label for="backupEvery">Сохранять автоматически каждые N дней (0 — не сохранять)</label>
+    <input id="backupEvery" type="number" inputmode="numeric" min="0" max="365" step="1">
+    <p class="tech-info" id="backupInfo" style="margin-top:8px"></p>
+    <details class="qr-manual" id="backupManual">
+      <summary>Если файл не сохраняется (старые айфоны)</summary>
+      <textarea id="backupText" readonly></textarea>
+      <button class="ghost" id="backupCopyBtn">Скопировать копию текстом</button>
+      <textarea id="backupPaste" placeholder="Вставьте сюда текст копии"></textarea>
+      <button class="ghost" id="backupPasteBtn">Загрузить из текста</button>
+    </details>
 
     <h2 class="sep-h">Удалённые вещи</h2>
     <p>Можно посмотреть и восстановить то, что удалили за последние 90 дней.</p>
@@ -656,7 +686,7 @@
 
 <script src="qrcode.js"></script>
 <script>
-const APP_VERSION = '2026.10.24.2';   // меняй при каждой выкладке — видно в настройках, удобно проверять обновление
+const APP_VERSION = '2026.10.24.3';   // меняй при каждой выкладке — видно в настройках, удобно проверять обновление
 
 /* ===== хранилище и состояние ===== */
 const GIST_FILENAME = 'items.json';
@@ -2011,7 +2041,7 @@ statusBtn.addEventListener('click', () => {
   gistIdInput.value = gistId;
   $('settingsName').value = profile;
   if(gistId){ gistIdDisplay.style.display = 'flex'; gistIdValue.textContent = gistId; } else { gistIdDisplay.style.display = 'none'; }
-  renderPeers(); renderKeyInfo(); renderDiag();
+  renderPeers(); renderKeyInfo(); renderDiag(); renderBackupInfo();
   overlay.classList.add('show');
 });
 cancelBtn.addEventListener('click', () => overlay.classList.remove('show'));
@@ -2071,6 +2101,165 @@ $('qrCopyBtn').addEventListener('click', async () => {
   const ta = $('qrCodeText');
   try{ await navigator.clipboard.writeText(ta.value); showToast('Скопировано'); }
   catch(e){ ta.select(); try{ document.execCommand('copy'); showToast('Скопировано'); }catch(e2){} }
+});
+
+/* ===== резервная копия: файл со всеми вещами, без интернета =====
+   Копия не заменяет список, а сливается с ним по правилам синхронизации.
+   Токен Gist и ключ устройства в копию не попадают — только вещи. */
+const BACKUP_MAX = 10 * 1048576;
+const backupEveryEl = $('backupEvery'), backupInfoEl = $('backupInfo'), backupFileEl = $('backupFile');
+
+function backupData(){
+  return {
+    app: 'gde-lezhit', format: 1, version: APP_VERSION,
+    exported: new Date().toISOString(), by: profile || undefined,
+    items: items.filter(i => !isOldTombstone(i))
+  };
+}
+function backupName(){
+  const d = new Date(), p = n => String(n).padStart(2, '0');
+  return 'gde-lezhit-' + d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + '.json';
+}
+const backupBlob = () => new Blob([JSON.stringify(backupData(), null, 1)], { type: 'application/json' });
+
+// Старые айфоны с главного экрана не умеют сохранять файлы из приложения
+function canDownload(){
+  const v = iosVersion();
+  if(v && isStandalone() && v[0] < 15) return false;
+  return 'download' in document.createElement('a');
+}
+function canShareFile(){
+  try{
+    const f = new File(['{}'], 'x.json', { type: 'application/json' });
+    return !!(navigator.canShare && navigator.share && navigator.canShare({ files: [f] }));
+  }catch(e){ return false; }
+}
+
+function markBackup(){
+  lsSet('backup_last', String(Date.now()));
+  renderBackupInfo();
+}
+function downloadBackup(auto){
+  const url = URL.createObjectURL(backupBlob());
+  const a = document.createElement('a');
+  a.href = url; a.download = backupName(); a.rel = 'noopener';
+  document.body.appendChild(a); a.click(); a.parentNode.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
+  markBackup();
+  showToast(auto ? 'Сохранена резервная копия (автоматически, в «Загрузки»)' : 'Копия сохранена в «Загрузки»');
+}
+async function shareBackup(){
+  const file = new File([backupBlob()], backupName(), { type: 'application/json' });
+  try{
+    await navigator.share({ files: [file], title: 'Где лежит — резервная копия' });
+    markBackup();
+  }catch(e){
+    if(e && e.name === 'AbortError') return;      // передумали
+    if(canDownload()) downloadBackup(false); else showToast('Не получилось — используйте «копию текстом» ниже');
+  }
+}
+function saveBackup(){
+  hideBackupBar();
+  // на айфоне «Поделиться → Сохранить в Файлы» надёжнее скачивания
+  if(iosVersion() && canShareFile()) return shareBackup();
+  if(canDownload()) return downloadBackup(false);
+  if(canShareFile()) return shareBackup();
+  $('backupManual').open = true;
+  $('backupText').value = JSON.stringify(backupData());
+  showToast('Этот браузер не сохраняет файлы — скопируйте копию текстом');
+}
+
+function importBackup(text){
+  if(typeof text !== 'string' || !text.trim()){ showToast('Пусто — нечего загружать'); return; }
+  if(text.length > BACKUP_MAX){ showToast('Файл слишком большой для копии'); return; }
+  let o;
+  try{ o = JSON.parse(text); }catch(e){ showToast('Это не файл копии «Где лежит»'); return; }
+  const arr = Array.isArray(o) ? o : (o && o.app === 'gde-lezhit' && Array.isArray(o.items) ? o.items : null);
+  if(!arr){ showToast('Это не файл копии «Где лежит»'); return; }
+  const r = applyRemote(arr);
+  if(!r){ showToast('Не удалось прочитать копию'); return; }
+  scheduleSync();
+  overlay.classList.remove('show');
+  showToast('Из копии: новых ' + r.added + ', обновлено ' + r.updated + (r.conflicts.length ? ', вопросов: ' + r.conflicts.length : ''));
+}
+
+/* --- автоматически раз в N дней ---
+   Браузер не даёт сохранять файлы, пока приложение закрыто, и не любит скачивания «сами по себе»,
+   поэтому копия сохраняется при первом касании экрана после того, как срок подошёл. */
+function backupEvery(){
+  const v = lsGet('backup_every');
+  if(v === null) return canDownload() ? 7 : 0;    // по умолчанию — раз в неделю, если файлы вообще сохраняются
+  const n = parseInt(v, 10);
+  return Number.isFinite(n) && n > 0 ? Math.min(n, 365) : 0;
+}
+function backupDueAt(){
+  const n = backupEvery();
+  if(!n) return null;
+  let since = parseInt(lsGet('backup_last'), 10) || parseInt(lsGet('backup_since'), 10);
+  if(!since){ since = Date.now(); lsSet('backup_since', String(since)); }   // отсчёт с первого запуска, а не «сразу»
+  return since + n * 864e5;
+}
+function renderBackupInfo(){
+  if(!backupInfoEl) return;
+  const last = parseInt(lsGet('backup_last'), 10);
+  const n = backupEvery(), due = backupDueAt();
+  let t = last ? 'Последняя копия: ' + timeAgo(last) + '.' : 'Копия ещё не сохранялась.';
+  if(n && due){
+    const left = Math.ceil((due - Date.now()) / 864e5);
+    t += left > 0 ? ' Следующая автоматически — через ' + left + ' дн.' : ' Следующая сохранится при первом касании экрана.';
+  }else t += ' Автоматическое сохранение выключено.';
+  if(!canDownload()) t += ' На этом устройстве файл сохраняется через «Поделиться» или текстом.';
+  backupInfoEl.textContent = t;
+  backupEveryEl.value = String(n);
+  $('backupShareBtn').hidden = !canShareFile();
+}
+
+const backupBar = $('backupBar');
+function hideBackupBar(){ backupBar.classList.remove('show'); }
+function armAutoBackup(){
+  const due = backupDueAt();
+  if(!due || Date.now() < due || !items.some(i => !i.deleted)) return;
+  if(canDownload()){
+    const go = () => {
+      document.removeEventListener('click', go, true);
+      if(Date.now() >= (backupDueAt() || Infinity)) downloadBackup(true);
+    };
+    document.addEventListener('click', go, true);   // касание даёт браузеру «разрешение» на скачивание
+  }else{
+    backupBar.classList.add('show');                // там, где файл сам не скачается, — просто напоминаем
+  }
+}
+
+$('backupSaveBtn').addEventListener('click', saveBackup);
+$('backupShareBtn').addEventListener('click', shareBackup);
+$('backupLoadBtn').addEventListener('click', () => { backupFileEl.value = ''; backupFileEl.click(); });
+backupFileEl.addEventListener('change', () => {
+  const f = backupFileEl.files && backupFileEl.files[0];
+  if(!f) return;
+  if(f.size > BACKUP_MAX){ showToast('Файл слишком большой для копии'); return; }
+  const rd = new FileReader();
+  rd.onload = () => importBackup(String(rd.result || ''));
+  rd.onerror = () => showToast('Не удалось открыть файл');
+  rd.readAsText(f);
+});
+backupEveryEl.addEventListener('change', () => {
+  const n = Math.max(0, Math.min(365, parseInt(backupEveryEl.value, 10) || 0));
+  lsSet('backup_every', String(n));
+  renderBackupInfo();
+});
+$('backupManual').addEventListener('toggle', () => { if($('backupManual').open) $('backupText').value = JSON.stringify(backupData()); });
+$('backupCopyBtn').addEventListener('click', async () => {
+  const ta = $('backupText');
+  ta.value = JSON.stringify(backupData());
+  try{ await navigator.clipboard.writeText(ta.value); markBackup(); showToast('Копия скопирована — вставьте её в заметки или сообщение'); }
+  catch(e){ ta.select(); try{ document.execCommand('copy'); markBackup(); showToast('Копия скопирована'); }catch(e2){ showToast('Выделите текст и скопируйте вручную'); } }
+});
+$('backupPasteBtn').addEventListener('click', () => importBackup($('backupPaste').value));
+$('backupBarSave').addEventListener('click', saveBackup);
+$('backupBarLater').addEventListener('click', () => {      // «позже» — напомним завтра
+  hideBackupBar();
+  const n = backupEvery();
+  if(n) lsSet('backup_last', String(Date.now() - (n - 1) * 864e5));
 });
 
 /* ===== поля ввода: держим курсор в поле зрения =====
@@ -2243,6 +2432,7 @@ render();
 if(!profile) openProfile(true);
 showNextPending();
 syncGist();
+armAutoBackup();
 
 </script>
 </body>
