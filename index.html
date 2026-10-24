@@ -429,6 +429,9 @@
   }
   .update-bar.show ~ .backup-bar{ bottom: calc(80px + env(safe-area-inset-bottom, 0px)); }
   #backupManual textarea + button{ margin-bottom: 8px; }
+  .modal .backup-result{ margin: 10px 0 0; color: var(--ok); font-weight: 700; overflow-wrap: anywhere; }
+  /* уведомления — поверх любых окон, иначе их не видно из настроек */
+  .toast{ z-index: 90; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); }
 
   /* ---- старые Safari (iPhone 6 и т.п.) ---- */
   .overlay{ top: 0; right: 0; bottom: 0; left: 0; }
@@ -539,6 +542,7 @@
     <h2 class="sep-h">Резервная копия</h2>
     <p>Файл со всеми вещами — сохраняется без интернета. Из него можно восстановить список или перенести его на другой телефон: копия не заменяет список, а сливается с ним. Токен Gist в копию не попадает.</p>
     <div class="row"><button class="primary" id="backupSaveBtn">Сохранить копию</button><button class="ghost" id="backupShareBtn" hidden>Поделиться</button></div>
+    <p class="backup-result" id="backupResult" role="status" hidden></p>
     <div class="row"><button class="ghost" id="backupLoadBtn">Загрузить из копии</button></div>
     <input type="file" id="backupFile" accept=".json,application/json,text/plain" hidden>
     <label for="backupEvery">Сохранять автоматически каждые N дней (0 — не сохранять)</label>
@@ -686,7 +690,7 @@
 
 <script src="qrcode.js"></script>
 <script>
-const APP_VERSION = '2026.10.24.3';   // меняй при каждой выкладке — видно в настройках, удобно проверять обновление
+const APP_VERSION = '2026.10.24.4';   // меняй при каждой выкладке — видно в настройках, удобно проверять обновление
 
 /* ===== хранилище и состояние ===== */
 const GIST_FILENAME = 'items.json';
@@ -758,11 +762,11 @@ const profileSaveBtn = $('profileSaveBtn'), profileCancelBtn = $('profileCancelB
 const conflictOverlay = $('conflictOverlay');
 
 /* ===== мелкие помощники ===== */
-function showToast(msg){
+function showToast(msg, ms){
   toastEl.textContent = msg;
   toastEl.classList.add('show');
   clearTimeout(showToast._t);
-  showToast._t = setTimeout(() => toastEl.classList.remove('show'), 1800);
+  showToast._t = setTimeout(() => toastEl.classList.remove('show'), ms || 1800);
 }
 function setStatus(state, text){
   statusDot.className = 'dot' + (state ? ' ' + state : '');
@@ -2135,9 +2139,13 @@ function canShareFile(){
   }catch(e){ return false; }
 }
 
-function markBackup(){
+// Итог сохранения: заметное уведомление поверх окон + отметка в разделе настроек
+function markBackup(msg){
   lsSet('backup_last', String(Date.now()));
   renderBackupInfo();
+  const el = $('backupResult');
+  if(el && msg){ el.textContent = '✓ ' + msg; el.hidden = false; }
+  if(msg) showToast('✓ ' + msg, 4500);
 }
 function downloadBackup(auto){
   const url = URL.createObjectURL(backupBlob());
@@ -2145,14 +2153,13 @@ function downloadBackup(auto){
   a.href = url; a.download = backupName(); a.rel = 'noopener';
   document.body.appendChild(a); a.click(); a.parentNode.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 30000);
-  markBackup();
-  showToast(auto ? 'Сохранена резервная копия (автоматически, в «Загрузки»)' : 'Копия сохранена в «Загрузки»');
+  markBackup((auto ? 'Автоматическая копия сохранена: ' : 'Копия сохранена: ') + a.download + ' — в папке «Загрузки»');
 }
 async function shareBackup(){
   const file = new File([backupBlob()], backupName(), { type: 'application/json' });
   try{
     await navigator.share({ files: [file], title: 'Где лежит — резервная копия' });
-    markBackup();
+    markBackup('Копия передана: ' + file.name);
   }catch(e){
     if(e && e.name === 'AbortError') return;      // передумали
     if(canDownload()) downloadBackup(false); else showToast('Не получилось — используйте «копию текстом» ниже');
@@ -2180,7 +2187,7 @@ function importBackup(text){
   if(!r){ showToast('Не удалось прочитать копию'); return; }
   scheduleSync();
   overlay.classList.remove('show');
-  showToast('Из копии: новых ' + r.added + ', обновлено ' + r.updated + (r.conflicts.length ? ', вопросов: ' + r.conflicts.length : ''));
+  showToast('✓ Копия загружена: новых ' + r.added + ', обновлено ' + r.updated + (r.conflicts.length ? ', вопросов: ' + r.conflicts.length : ''), 4500);
 }
 
 /* --- автоматически раз в N дней ---
@@ -2251,8 +2258,8 @@ $('backupManual').addEventListener('toggle', () => { if($('backupManual').open) 
 $('backupCopyBtn').addEventListener('click', async () => {
   const ta = $('backupText');
   ta.value = JSON.stringify(backupData());
-  try{ await navigator.clipboard.writeText(ta.value); markBackup(); showToast('Копия скопирована — вставьте её в заметки или сообщение'); }
-  catch(e){ ta.select(); try{ document.execCommand('copy'); markBackup(); showToast('Копия скопирована'); }catch(e2){ showToast('Выделите текст и скопируйте вручную'); } }
+  try{ await navigator.clipboard.writeText(ta.value); markBackup('Копия скопирована — вставьте её в заметки или сообщение'); }
+  catch(e){ ta.select(); try{ document.execCommand('copy'); markBackup('Копия скопирована — вставьте её в заметки или сообщение'); }catch(e2){ showToast('Выделите текст и скопируйте вручную'); } }
 });
 $('backupPasteBtn').addEventListener('click', () => importBackup($('backupPaste').value));
 $('backupBarSave').addEventListener('click', saveBackup);
